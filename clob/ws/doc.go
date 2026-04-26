@@ -1,29 +1,31 @@
-// Package ws provides a WebSocket client for live Polymarket order book and order updates.
+// Package ws provides WebSocket clients for live Polymarket CLOB order book and user updates.
 //
 // # Connecting
 //
-// Basic (read-only order book):
+// Basic market stream:
 //
-//	wsClient, err := ws.New(ws.Config{Host: ""})
+//	wsClient := ws.NewClient("")
+//	err := wsClient.ConnectMarket(ctx)
 //
-// With authentication for order notifications:
+// User stream with CLOB API credentials:
 //
-//	wsClient, err := ws.New(ws.Config{
-//	    Signer:      polyauth.NewSigner(privateKey),
-//	    Credentials: &ws.Credentials{Key: "...", Secret: "...", Passphrase: "..."},
-//	    ChainID:     137,
+//	wsClient := ws.New(ws.Config{
+//	    Credentials: &clob.Credentials{
+//	        Key:        "...",
+//	        Secret:     "...",
+//	        Passphrase: "...",
+//	    },
 //	})
+//	err := wsClient.ConnectUser(ctx)
 //
 // # Subscriptions
 //
-//	wsClient.SubscribeOrderBook("token-id")  // order book snapshots
-//	wsClient.SubscribeOrders()               // order fill/status (requires auth)
+//	err = wsClient.SubscribeOrderBook(ctx, []string{"token-id"})
+//	err = wsClient.SubscribeOrders(ctx, []string{"condition-id"})
 //
 // # Reading Updates
 //
-//	for update := range wsClient.Channel { ... }
-//
-// # Disconnection
-//
-// The client does NOT auto-reconnect. Handle ErrConnectionLost and re-subscribe.
+//	for event := range wsClient.Events() {
+//	    _ = event
+//	}
 package ws
