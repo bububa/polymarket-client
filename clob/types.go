@@ -391,6 +391,9 @@ type SignedOrder struct {
 	MakerAmount String `json:"makerAmount"`
 	// TakerAmount is the amount the maker wants.
 	TakerAmount String `json:"takerAmount"`
+	// Expiration is the order expiry Unix timestamp (GTD orders only).
+	// Present in REST wire format but excluded from EIP-712 signing.
+	Expiration String `json:"expiration,omitempty"`
 	// Side is the order direction.
 	Side Side `json:"side"`
 	// SignatureType identifies the signature method.

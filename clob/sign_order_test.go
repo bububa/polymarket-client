@@ -98,9 +98,40 @@ func TestSignedOrderJSONMarshal_NoV1Fields(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := string(b)
-	for _, key := range []string{`"taker"`, `"expiration"`, `"nonce"`, `"feeRateBps"`} {
+	for _, key := range []string{`"taker"`, `"nonce"`, `"feeRateBps"`} {
 		if strings.Contains(s, key) {
 			t.Fatalf("v1 field %q found in JSON: %s", key, s)
 		}
+	}
+}
+
+func TestSignedOrderJSON_ExpirationOmitEmpty(t *testing.T) {
+	gtc := SignedOrder{
+		Salt:          "42",
+		Maker:         "0x0000000000000000000000000000000000000001",
+		Signer:        "0x0000000000000000000000000000000000000002",
+		TokenID:       "123",
+		MakerAmount:   "1000000",
+		TakerAmount:   "500000",
+		Side:          Buy,
+		SignatureType: SignatureTypeEOA,
+		Timestamp:     "1700000000000",
+		Metadata:      ZeroBytes32,
+		Builder:       ZeroBytes32,
+		Signature:     "0xdead",
+	}
+	b, _ := json.Marshal(gtc)
+	if strings.Contains(string(b), `"expiration"`) {
+		t.Fatal("GTC order should not include expiration field")
+	}
+
+	gtd := gtc
+	gtd.Expiration = "1735689600"
+	b, _ = json.Marshal(gtd)
+	if !strings.Contains(string(b), `"expiration"`) {
+		t.Fatal("GTD order should include expiration field")
+	}
+	if !strings.Contains(string(b), `"1735689600"`) {
+		t.Fatal("GTD order expiration should have correct value")
 	}
 }

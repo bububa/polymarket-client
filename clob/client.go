@@ -89,7 +89,7 @@ func WithRelayerClient(client *relayer.Client) Option {
 // NewClient creates a CLOB client for host.
 func NewClient(host string, opts ...Option) *Client {
 	if host == "" {
-		host = V2Host
+		host = MainnetHost
 	}
 	c := &Client{
 		host:       strings.TrimRight(host, "/"),
