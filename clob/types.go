@@ -34,6 +34,7 @@ const (
 	SignatureTypeEOA SignatureType = iota
 	SignatureTypeProxy
 	SignatureTypeGnosisSafe
+	SignatureTypePoly1271
 )
 
 type AssetType string
@@ -384,20 +385,12 @@ type SignedOrder struct {
 	Maker string `json:"maker"`
 	// Signer is the signing authority address.
 	Signer string `json:"signer"`
-	// Taker is the order taker address (empty for any).
-	Taker string `json:"taker,omitempty"`
 	// TokenID is the conditional token identifier.
 	TokenID String `json:"tokenId"`
 	// MakerAmount is the amount the maker offers.
 	MakerAmount String `json:"makerAmount"`
 	// TakerAmount is the amount the maker wants.
 	TakerAmount String `json:"takerAmount"`
-	// Expiration is the order expiry timestamp.
-	Expiration String `json:"expiration,omitempty"`
-	// Nonce is the order nonce.
-	Nonce String `json:"nonce,omitempty"`
-	// FeeRateBps is the fee rate in basis points.
-	FeeRateBps String `json:"feeRateBps,omitempty"`
 	// Side is the order direction.
 	Side Side `json:"side"`
 	// SignatureType identifies the signature method.
@@ -840,41 +833,4 @@ type RfqQuote struct {
 	SizeOut Float64 `json:"sizeOut"`
 	// Price is the quoted price.
 	Price Float64 `json:"price"`
-}
-
-// OrderArgsV2 contains arguments for creating a limit order.
-type OrderArgsV2 struct {
-	// TokenID is the conditional token identifier.
-	TokenID string `json:"token_id"`
-	// Price is the limit price.
-	Price float64 `json:"price"`
-	// Size is the order quantity.
-	Size float64 `json:"size"`
-	// Side is the order direction.
-	Side Side `json:"side"`
-	// Expiration is the order expiry Unix timestamp (0 = GTC).
-	Expiration int64 `json:"expiration,omitempty"`
-	// BuilderCode is the builder fee split code.
-	BuilderCode string `json:"builder_code,omitempty"`
-	// Metadata is optional caller-provided metadata.
-	Metadata string `json:"metadata,omitempty"`
-}
-
-// MarketOrderArgsV2 contains arguments for creating a market order.
-type MarketOrderArgsV2 struct {
-	// TokenID is the conditional token identifier.
-	TokenID string `json:"token_id"`
-	// Amount is the market order quantity.
-	Amount float64 `json:"amount"`
-	// Side is the order direction.
-	Side Side `json:"side"`
-	// Price is the slippage protection limit price.
-	Price float64 `json:"price,omitempty"`
-	// OrderType is the execution type.
-	OrderType OrderType `json:"order_type,omitempty"`
-	// UserUSDCBalance is the user's current balance.
-	UserUSDCBalance float64 `json:"user_usdc_balance,omitempty"`
-	// BuilderCode is the builder fee split code.
-	BuilderCode string `json:"builder_code,omitempty"`
-	Metadata    string `json:"metadata,omitempty"`
 }

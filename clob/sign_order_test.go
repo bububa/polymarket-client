@@ -1,7 +1,9 @@
 package clob
 
 import (
+	"encoding/json"
 	"math/big"
+	"strings"
 	"testing"
 	"time"
 
@@ -38,9 +40,6 @@ func TestSignOrderFillsV2Defaults(t *testing.T) {
 	if order.Metadata != ZeroBytes32 || order.Builder != ZeroBytes32 {
 		t.Fatalf("unexpected metadata/builder defaults: %q %q", order.Metadata, order.Builder)
 	}
-	if order.Taker != ZeroAddress || order.Expiration.String() != "0" || order.Nonce.String() != "0" || order.FeeRateBps.String() != "0" {
-		t.Fatalf("unexpected wire compatibility defaults: %#v", order)
-	}
 	if order.Signature == "" {
 		t.Fatal("signature is empty")
 	}
@@ -61,5 +60,47 @@ func TestSignOrderRejectsSignerMismatch(t *testing.T) {
 	}
 	if err := SignOrder(signer, PolygonChainID, &order); err == nil {
 		t.Fatal("expected signer mismatch error")
+	}
+}
+
+func TestSignatureTypeEnumValues(t *testing.T) {
+	if SignatureTypeEOA != 0 {
+		t.Fatalf("SignatureTypeEOA = %d, want 0", SignatureTypeEOA)
+	}
+	if SignatureTypeProxy != 1 {
+		t.Fatalf("SignatureTypeProxy = %d, want 1", SignatureTypeProxy)
+	}
+	if SignatureTypeGnosisSafe != 2 {
+		t.Fatalf("SignatureTypeGnosisSafe = %d, want 2", SignatureTypeGnosisSafe)
+	}
+	if SignatureTypePoly1271 != 3 {
+		t.Fatalf("SignatureTypePoly1271 = %d, want 3", SignatureTypePoly1271)
+	}
+}
+
+func TestSignedOrderJSONMarshal_NoV1Fields(t *testing.T) {
+	order := SignedOrder{
+		Salt:          "42",
+		Maker:         "0x0000000000000000000000000000000000000001",
+		Signer:        "0x0000000000000000000000000000000000000002",
+		TokenID:       "123",
+		MakerAmount:   "1000000",
+		TakerAmount:   "500000",
+		Side:          Buy,
+		SignatureType: SignatureTypeEOA,
+		Timestamp:     "1700000000000",
+		Metadata:      ZeroBytes32,
+		Builder:       ZeroBytes32,
+		Signature:     "0xdead",
+	}
+	b, err := json.Marshal(order)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	for _, key := range []string{`"taker"`, `"expiration"`, `"nonce"`, `"feeRateBps"`} {
+		if strings.Contains(s, key) {
+			t.Fatalf("v1 field %q found in JSON: %s", key, s)
+		}
 	}
 }

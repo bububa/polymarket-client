@@ -147,18 +147,6 @@ func prepareOrderForSigning(signer *polyauth.Signer, order *SignedOrder, config 
 	if order.Builder == "" {
 		order.Builder = ZeroBytes32
 	}
-	if order.Expiration == "" {
-		order.Expiration = "0"
-	}
-	if order.Nonce == "" {
-		order.Nonce = "0"
-	}
-	if order.FeeRateBps == "" {
-		order.FeeRateBps = "0"
-	}
-	if order.Taker == "" {
-		order.Taker = ZeroAddress
-	}
 	return nil
 }
 
