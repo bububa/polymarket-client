@@ -53,12 +53,14 @@ func computeOrderAmounts(price, size string, side Side) (makerAmount, takerAmoun
 // BUY market order: amount is USDC (pUSD) the user wants to spend.
 //
 //	makerAmount = amount x 1e6         (USDC offered)
-//	takerAmount = amount / price x 1e6 (tokens wanted at worstPrice)
+//	takerAmount = ceil(amount / price x 1e6)  (tokens wanted at worstPrice)
 //
 // SELL market order: amount is shares the user wants to sell.
 //
 //	makerAmount = amount x 1e6         (tokens offered)
-//	takerAmount = amount x price x 1e6 (USDC wanted)
+//	takerAmount = ceil(amount x price x 1e6)  (USDC wanted)
+//
+// We ceil the takerAmount so the implied execution price never worsens the user's worstPrice.
 func computeMarketOrderAmounts(price, amount string, side Side) (makerAmount, takerAmount string, err error) {
 	p, err := parseRat(price, "price")
 	if err != nil {
@@ -83,17 +85,17 @@ func computeMarketOrderAmounts(price, amount string, side Side) (makerAmount, ta
 	amtScaled := new(big.Rat).Mul(a, new(big.Rat).SetInt(scale))
 
 	if side == Buy {
-		// buyer: makerAmount = USDC, takerAmount = USDC / price (tokens)
+		// makerAmount = USDC (floor), takerAmount = USDC / price (ceil → protects worst price)
 		makerInt := truncRat(amtScaled)
 		takerAmt := new(big.Rat).Quo(a, p)
 		takerScaled := new(big.Rat).Mul(takerAmt, new(big.Rat).SetInt(scale))
-		return makerInt.String(), truncRat(takerScaled).String(), nil
+		return makerInt.String(), ceilRat(takerScaled).String(), nil
 	}
-	// seller: makerAmount = shares, takerAmount = shares x price (USDC)
+	// seller: makerAmount = shares (floor), takerAmount = shares x price (ceil → protects worst price)
 	makerInt := truncRat(amtScaled)
 	takerAmt := new(big.Rat).Mul(a, p)
 	takerScaled := new(big.Rat).Mul(takerAmt, new(big.Rat).SetInt(scale))
-	return makerInt.String(), truncRat(takerScaled).String(), nil
+	return makerInt.String(), ceilRat(takerScaled).String(), nil
 }
 
 func parseRat(s, name string) (*big.Rat, error) {
@@ -108,28 +110,15 @@ func truncRat(r *big.Rat) *big.Int {
 	return new(big.Int).Div(r.Num(), r.Denom())
 }
 
-func roundToTickSize(price, tickSize string) (string, error) {
-	p, err := parseRat(price, "price")
-	if err != nil {
-		return "", err
+func ceilRat(r *big.Rat) *big.Int {
+	num := r.Num()
+	den := r.Denom()
+	q := new(big.Int).Div(num, den)
+	rem := new(big.Int).Mod(num, den)
+	if rem.Sign() > 0 {
+		q.Add(q, big.NewInt(1))
 	}
-	t, err := parseRat(tickSize, "tickSize")
-	if err != nil {
-		return "", err
-	}
-	if t.Sign() <= 0 {
-		return price, nil
-	}
-
-	div := new(big.Rat).Quo(p, t)
-	floorDiv := new(big.Int).Div(div.Num(), div.Denom())
-	rounded := new(big.Rat).Mul(new(big.Rat).SetInt(floorDiv), t)
-	s := rounded.FloatString(6)
-	s = strings.TrimRight(s, "0")
-	if dot := strings.LastIndex(s, "."); dot >= 0 && len(s)-dot <= 2 {
-		s += "0"
-	}
-	return s, nil
+	return q
 }
 
 // validatePriceTicks checks that price is an exact multiple of the given tick size.
@@ -149,19 +138,15 @@ func validatePriceTicks(price, tickSize string) error {
 	if t.Sign() <= 0 {
 		return nil
 	}
-	// check p % t == 0
-	div := new(big.Rat).Quo(p, t)
-	num := div.Num()
-	den := div.Denom()
-	if !div.IsInt() {
+	if !isExactMultiple(p, t) {
 		return fmt.Errorf("polymarket: price %q is not aligned to tick size %q", price, tickSize)
 	}
-	if den.Cmp(big.NewInt(1)) != 0 {
-		// not an exact multiple
-		return fmt.Errorf("polymarket: price %q is not aligned to tick size %q", price, tickSize)
-	}
-	_ = num // unused but confirms divisibility
 	return nil
+}
+
+func isExactMultiple(p, t *big.Rat) bool {
+	div := new(big.Rat).Quo(p, t)
+	return div.IsInt()
 }
 
 // ValidateBytes32Hex checks that v is empty or a valid 0x-prefixed bytes32 hex string.

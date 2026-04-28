@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 
 	"github.com/bububa/polymarket-client/internal/polyauth"
@@ -330,5 +331,93 @@ func TestCreateAndPostMarketOrder_RejectGTD(t *testing.T) {
 	}, CreateOrderOptions{}, GTD, nil)
 	if err == nil {
 		t.Fatal("expected error for GTD market order")
+	}
+}
+
+func TestCreateAndPostMarketOrder_RejectDeferExec(t *testing.T) {
+	signer := testKey()
+	client := NewClient("", WithSigner(signer))
+	b := NewOrderBuilder(client)
+
+	yes := true
+	_, err := b.CreateAndPostMarketOrder(context.Background(), MarketOrderArgsV2{
+		TokenID: "123456",
+		Price:   "0.50",
+		Amount:  "100",
+		Side:    Buy,
+	}, CreateOrderOptions{}, FOK, &yes)
+	if err == nil {
+		t.Fatal("expected error for deferExec=true + FOK")
+	}
+
+	_, err = b.CreateAndPostMarketOrder(context.Background(), MarketOrderArgsV2{
+		TokenID: "123456",
+		Price:   "0.50",
+		Amount:  "100",
+		Side:    Buy,
+	}, CreateOrderOptions{}, FAK, &yes)
+	if err == nil {
+		t.Fatal("expected error for deferExec=true + FAK")
+	}
+}
+
+func TestValidatePriceRange(t *testing.T) {
+	for _, tt := range []struct {
+		price    string
+		allowOne bool
+		wantErr  bool
+	}{
+		{"0.50", false, false},
+		{"0.99", false, false},
+		{"0.0001", false, false},
+		{"0", false, true},
+		{"-0.1", false, true},
+		{"1.0", false, true},
+		{"1.2", false, true},
+		{"1.0", true, false},
+		{"1.1", true, true},
+		{"not-a-number", false, true},
+		{"", false, true},
+	} {
+		t.Run("limit_"+tt.price, func(t *testing.T) {
+			err := validatePriceRange(tt.price, tt.allowOne)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validatePriceRange(%q, %v) err = %v, wantErr = %v", tt.price, tt.allowOne, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestComputeMarketOrderAmounts_CeilProtectsWorstPrice_BUY(t *testing.T) {
+	maker, taker, err := computeMarketOrderAmounts("0.333333", "100", Buy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// implied price = makerAmount / takerAmount should be <= worstPrice
+	// floor takerAmount would give implied price > worstPrice
+	takerVal, err := strconv.ParseInt(taker, 10, 64)
+	makerVal, _ := strconv.ParseInt(maker, 10, 64)
+	if takerVal == 0 {
+		t.Fatal("taker is zero")
+	}
+	impliedPrice := float64(makerVal) / float64(takerVal)
+	if impliedPrice > 0.333334 {
+		t.Errorf("implied price %f exceeds worst price 0.333333", impliedPrice)
+	}
+}
+
+func TestComputeMarketOrderAmounts_CeilProtectsWorstPrice_SELL(t *testing.T) {
+	maker, taker, err := computeMarketOrderAmounts("0.333333", "100", Sell)
+	if err != nil {
+		t.Fatal(err)
+	}
+	makerVal, _ := strconv.ParseInt(maker, 10, 64)
+	takerVal, err := strconv.ParseInt(taker, 10, 64)
+	if takerVal == 0 {
+		t.Fatal("taker is zero")
+	}
+	impliedPrice := float64(takerVal) / float64(makerVal)
+	if impliedPrice < 0.333332 {
+		t.Errorf("implied price %f below worst price 0.333333", impliedPrice)
 	}
 }

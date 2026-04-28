@@ -160,27 +160,40 @@ func TestComputeMarketOrderAmounts_Errors(t *testing.T) {
 	}
 }
 
-func TestRoundToTickSize(t *testing.T) {
-	for _, tt := range []struct {
+func TestValidatePriceTicks(t *testing.T) {
+	valid := []struct {
 		price    string
 		tickSize string
-		want     string
 	}{
-		{"0.673", "0.01", "0.67"},
-		{"0.889", "0.1", "0.80"},
-		{"0.125", "0.001", "0.125"},
-		{"0.5", "0.01", "0.50"},
-		{"0.3333", "0.01", "0.33"},
-		{"0.0326", "0.001", "0.032"},
-		{"0.123456", "0.0001", "0.1234"},
-	} {
+		{"0.67", "0.01"},
+		{"0.80", "0.1"},
+		{"0.125", "0.001"},
+		{"0.50", "0.01"},
+		{"0.33", "0.01"},
+		{"0.032", "0.001"},
+		{"0.1234", "0.0001"},
+	}
+	for _, tt := range valid {
 		t.Run(tt.price+"_"+tt.tickSize, func(t *testing.T) {
-			got, err := roundToTickSize(tt.price, tt.tickSize)
-			if err != nil {
-				t.Fatalf("roundToTickSize(%s, %s) error = %v", tt.price, tt.tickSize, err)
+			if err := validatePriceTicks(tt.price, tt.tickSize); err != nil {
+				t.Errorf("validatePriceTicks(%s, %s) error = %v", tt.price, tt.tickSize, err)
 			}
-			if got != tt.want {
-				t.Errorf("roundToTickSize(%s, %s) = %q, want %q", tt.price, tt.tickSize, got, tt.want)
+		})
+	}
+
+	invalid := []struct {
+		price    string
+		tickSize string
+	}{
+		{"0.673", "0.01"},
+		{"0.889", "0.1"},
+		{"0.3333", "0.01"},
+		{"0.0326", "0.001"},
+	}
+	for _, tt := range invalid {
+		t.Run(tt.price+"_"+tt.tickSize, func(t *testing.T) {
+			if err := validatePriceTicks(tt.price, tt.tickSize); err == nil {
+				t.Errorf("validatePriceTicks(%s, %s) expected error", tt.price, tt.tickSize)
 			}
 		})
 	}
