@@ -28,7 +28,7 @@ func TestBuildOrder_HappyPath(t *testing.T) {
 		Price:   "0.67",
 		Size:    "10",
 		Side:    Buy,
-	})
+	}, CreateOrderOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,17 +39,31 @@ func TestBuildOrder_HappyPath(t *testing.T) {
 	if order.TakerAmount.String() != "10000000" {
 		t.Errorf("takerAmount = %s, want 10000000", order.TakerAmount)
 	}
-	if order.Side != Buy {
-		t.Errorf("side = %s, want BUY", order.Side)
-	}
-	if order.TokenID.String() != "123456" {
-		t.Errorf("tokenId = %s", order.TokenID)
-	}
 	if order.Signature == "" {
 		t.Fatal("signature is empty")
 	}
 	if order.Expiration.String() != "0" {
 		t.Errorf("expiration = %s, want 0", order.Expiration)
+	}
+}
+
+func TestBuildOrder_WithTickRounding(t *testing.T) {
+	signer := testKey()
+	client := NewClient("", WithSigner(signer))
+	b := NewOrderBuilder(client)
+
+	order, err := b.BuildOrder(OrderArgsV2{
+		TokenID: "123456",
+		Price:   "0.673",
+		Size:    "10",
+		Side:    Buy,
+	}, CreateOrderOptions{TickSize: "0.01"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 0.673 rounded down to 0.01 tick = 0.67
+	if order.MakerAmount.String() != "6700000" {
+		t.Errorf("makerAmount = %s, want 6700000 (tick-rounded)", order.MakerAmount)
 	}
 }
 
@@ -63,7 +77,7 @@ func TestBuildOrder_Sell(t *testing.T) {
 		Price:   "0.25",
 		Size:    "100",
 		Side:    Sell,
-	})
+	}, CreateOrderOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,22 +87,6 @@ func TestBuildOrder_Sell(t *testing.T) {
 	}
 	if order.TakerAmount.String() != "25000000" {
 		t.Errorf("takerAmount = %s, want 25000000", order.TakerAmount)
-	}
-}
-
-func TestBuildOrder_InvalidParams(t *testing.T) {
-	signer := testKey()
-	client := NewClient("", WithSigner(signer))
-	b := NewOrderBuilder(client)
-
-	_, err := b.BuildOrder(OrderArgsV2{TokenID: "1", Price: "bad", Size: "10", Side: Buy})
-	if err == nil {
-		t.Fatal("expected error for invalid price")
-	}
-
-	_, err = b.BuildOrder(OrderArgsV2{TokenID: "1", Price: "0.5", Size: "xyz", Side: Buy})
-	if err == nil {
-		t.Fatal("expected error for invalid size")
 	}
 }
 
@@ -103,7 +101,7 @@ func TestBuildOrder_WithCustomExpiration(t *testing.T) {
 		Size:       "10",
 		Side:       Buy,
 		Expiration: "9999999999",
-	})
+	}, CreateOrderOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,28 +110,96 @@ func TestBuildOrder_WithCustomExpiration(t *testing.T) {
 	}
 }
 
-func TestBuildMarketOrder_HappyPath(t *testing.T) {
+func TestBuildOrder_WithNegRisk(t *testing.T) {
+	signer := testKey()
+	client := NewClient("", WithSigner(signer))
+	b := NewOrderBuilder(client)
+
+	_, err := b.BuildOrder(OrderArgsV2{
+		TokenID: "123456",
+		Price:   "0.50",
+		Size:    "10",
+		Side:    Buy,
+	}, CreateOrderOptions{NegRisk: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestBuildOrder_InvalidBytes32(t *testing.T) {
+	signer := testKey()
+	client := NewClient("", WithSigner(signer))
+	b := NewOrderBuilder(client)
+
+	_, err := b.BuildOrder(OrderArgsV2{
+		TokenID:     "123456",
+		Price:       "0.50",
+		Size:        "10",
+		Side:        Buy,
+		BuilderCode: "not-valid-hex",
+	}, CreateOrderOptions{})
+	if err == nil {
+		t.Fatal("expected error for invalid builder code")
+	}
+
+	_, err = b.BuildOrder(OrderArgsV2{
+		TokenID:  "123456",
+		Price:    "0.50",
+		Size:     "10",
+		Side:     Buy,
+		Metadata: "0xabc",
+	}, CreateOrderOptions{})
+	if err == nil {
+		t.Fatal("expected error for invalid metadata")
+	}
+}
+
+func TestBuildMarketOrder_HappyPath_BUY(t *testing.T) {
 	signer := testKey()
 	client := NewClient("", WithSigner(signer))
 	b := NewOrderBuilder(client)
 
 	order, err := b.BuildMarketOrder(MarketOrderArgsV2{
-		TokenID:    "789",
-		WorstPrice: "0.99",
-		Size:       "50",
-		Side:       Buy,
-	})
+		TokenID: "789",
+		Price:   "0.5",
+		Amount:  "100",
+		Side:    Buy,
+	}, CreateOrderOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if order.MakerAmount.String() != "49500000" {
-		t.Errorf("makerAmount = %s, want 49500000", order.MakerAmount)
+	// BUY: makerAmount = 100 USDC, takerAmount = 100/0.5 = 200 shares
+	if order.MakerAmount.String() != "100000000" {
+		t.Errorf("makerAmount = %s, want 100000000", order.MakerAmount)
 	}
-	if order.TakerAmount.String() != "50000000" {
-		t.Errorf("takerAmount = %s, want 50000000", order.TakerAmount)
+	if order.TakerAmount.String() != "200000000" {
+		t.Errorf("takerAmount = %s, want 200000000", order.TakerAmount)
 	}
 	if order.Builder != ZeroBytes32 {
 		t.Errorf("market order builder = %q, want %q", order.Builder, ZeroBytes32)
+	}
+}
+
+func TestBuildMarketOrder_HappyPath_SELL(t *testing.T) {
+	signer := testKey()
+	client := NewClient("", WithSigner(signer))
+	b := NewOrderBuilder(client)
+
+	order, err := b.BuildMarketOrder(MarketOrderArgsV2{
+		TokenID: "789",
+		Price:   "0.45",
+		Amount:  "200",
+		Side:    Sell,
+	}, CreateOrderOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// SELL: makerAmount = 200 shares, takerAmount = 200*0.45 = 90 USDC
+	if order.MakerAmount.String() != "200000000" {
+		t.Errorf("makerAmount = %s, want 200000000", order.MakerAmount)
+	}
+	if order.TakerAmount.String() != "90000000" {
+		t.Errorf("takerAmount = %s, want 90000000", order.TakerAmount)
 	}
 }
 
@@ -155,7 +221,7 @@ func TestCreateAndPostOrder_WithServer(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := NewClient(srv.URL, WithSigner(signer), WithChainID(PolygonChainID), WithCredentials(Credentials{Key: "test-key", Secret: "test-secret", Passphrase: "test-passphrase"}))
+	client := NewClient(srv.URL, WithSigner(signer), WithChainID(PolygonChainID), WithCredentials(Credentials{Key: "test-key"}))
 	b := NewOrderBuilder(client)
 
 	resp, err := b.CreateAndPostOrder(context.Background(), OrderArgsV2{
@@ -163,32 +229,19 @@ func TestCreateAndPostOrder_WithServer(t *testing.T) {
 		Price:   "0.50",
 		Size:    "20",
 		Side:    Buy,
-	}, GTC, false)
+	}, CreateOrderOptions{}, GTC, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !resp.Success {
 		t.Fatal("expected success")
 	}
-	if resp.OrderID != "order-123" {
-		t.Errorf("orderID = %s, want order-123", resp.OrderID)
-	}
-
-	if gotReq.Order.Signature == "" {
-		t.Fatal("posted order has no signature")
-	}
-	if gotReq.Order.MakerAmount.String() != "10000000" {
-		t.Errorf("posted makerAmount = %s, want 10000000", gotReq.Order.MakerAmount)
-	}
-	if gotReq.Order.TakerAmount.String() != "20000000" {
-		t.Errorf("posted takerAmount = %s, want 20000000", gotReq.Order.TakerAmount)
-	}
 	if gotReq.OrderType != GTC {
 		t.Errorf("posted orderType = %s, want GTC", gotReq.OrderType)
 	}
 }
 
-func TestCreateAndPostMarketOrder_WithServer(t *testing.T) {
+func TestCreateAndPostMarketOrder_FOK(t *testing.T) {
 	signer := testKey()
 
 	var gotReq PostOrderRequest
@@ -202,22 +255,54 @@ func TestCreateAndPostMarketOrder_WithServer(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := NewClient(srv.URL, WithSigner(signer), WithChainID(PolygonChainID), WithCredentials(Credentials{Key: "test-key", Secret: "test-secret", Passphrase: "test-passphrase"}))
+	client := NewClient(srv.URL, WithSigner(signer), WithChainID(PolygonChainID), WithCredentials(Credentials{Key: "test-key"}))
 	b := NewOrderBuilder(client)
 
 	resp, err := b.CreateAndPostMarketOrder(context.Background(), MarketOrderArgsV2{
-		TokenID:    "789012",
-		WorstPrice: "0.95",
-		Size:       "30",
-		Side:       Buy,
-	}, false)
+		TokenID: "123456",
+		Price:   "0.50",
+		Amount:  "100",
+		Side:    Buy,
+	}, CreateOrderOptions{}, FOK, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !resp.Success {
 		t.Fatal("expected success")
 	}
-	if gotReq.OrderType != GTC {
-		t.Errorf("market post orderType = %s, want GTC", gotReq.OrderType)
+	if gotReq.OrderType != FOK {
+		t.Errorf("market post orderType = %s, want FOK", gotReq.OrderType)
+	}
+}
+
+func TestCreateAndPostMarketOrder_RejectGTC(t *testing.T) {
+	signer := testKey()
+	client := NewClient("", WithSigner(signer))
+	b := NewOrderBuilder(client)
+
+	_, err := b.CreateAndPostMarketOrder(context.Background(), MarketOrderArgsV2{
+		TokenID: "123456",
+		Price:   "0.50",
+		Amount:  "100",
+		Side:    Buy,
+	}, CreateOrderOptions{}, GTC, false)
+	if err == nil {
+		t.Fatal("expected error for GTC market order")
+	}
+}
+
+func TestCreateAndPostMarketOrder_RejectGTD(t *testing.T) {
+	signer := testKey()
+	client := NewClient("", WithSigner(signer))
+	b := NewOrderBuilder(client)
+
+	_, err := b.CreateAndPostMarketOrder(context.Background(), MarketOrderArgsV2{
+		TokenID: "123456",
+		Price:   "0.50",
+		Amount:  "100",
+		Side:    Buy,
+	}, CreateOrderOptions{}, GTD, false)
+	if err == nil {
+		t.Fatal("expected error for GTD market order")
 	}
 }

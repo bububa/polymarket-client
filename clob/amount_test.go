@@ -64,7 +64,7 @@ func TestComputeOrderAmounts_Sell(t *testing.T) {
 }
 
 func TestComputeOrderAmounts_Errors(t *testing.T) {
-	tests := []struct {
+	for _, tt := range []struct {
 		name  string
 		price string
 		size  string
@@ -76,9 +76,7 @@ func TestComputeOrderAmounts_Errors(t *testing.T) {
 		{"zero_size", "0.5", "0", Buy},
 		{"negative_size", "0.5", "-1", Buy},
 		{"invalid_side", "0.5", "10", Side("INVALID")},
-	}
-
-	for _, tt := range tests {
+	} {
 		t.Run(tt.name, func(t *testing.T) {
 			_, _, err := computeOrderAmounts(tt.price, tt.size, tt.side)
 			if err == nil {
@@ -88,21 +86,82 @@ func TestComputeOrderAmounts_Errors(t *testing.T) {
 	}
 }
 
-func TestComputeMarketOrderAmounts(t *testing.T) {
-	maker, taker, err := computeMarketOrderAmounts("0.99", "50", Buy)
-	if err != nil {
-		t.Fatal(err)
+func TestComputeMarketOrderAmounts_BUY(t *testing.T) {
+	for _, tt := range []struct {
+		name                 string
+		price                string
+		amount               string
+		wantMaker, wantTaker string
+	}{
+		{"buy_100usdc_at_0.5", "0.5", "100", "100000000", "200000000"},
+		{"buy_50usdc_at_0.25", "0.25", "50", "50000000", "200000000"},
+		{"buy_10usdc_at_1.0", "1.0", "10", "10000000", "10000000"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			gotMaker, gotTaker, err := computeMarketOrderAmounts(tt.price, tt.amount, Buy)
+			if err != nil {
+				t.Fatalf("computeMarketOrderAmounts(%s, %s, Buy) error = %v", tt.price, tt.amount, err)
+			}
+			if gotMaker != tt.wantMaker {
+				t.Errorf("makerAmount = %s, want %s", gotMaker, tt.wantMaker)
+			}
+			if gotTaker != tt.wantTaker {
+				t.Errorf("takerAmount = %s, want %s", gotTaker, tt.wantTaker)
+			}
+		})
 	}
-	if maker != "49500000" {
-		t.Errorf("market BUY makerAmount = %s, want 49500000", maker)
+}
+
+func TestComputeMarketOrderAmounts_SELL(t *testing.T) {
+	for _, tt := range []struct {
+		name                 string
+		price                string
+		amount               string
+		wantMaker, wantTaker string
+	}{
+		{"sell_200shares_at_0.45", "0.45", "200", "200000000", "90000000"},
+		{"sell_50shares_at_0.75", "0.75", "50", "50000000", "37500000"},
+		{"sell_10shares_at_1.0", "1.0", "10", "10000000", "10000000"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			gotMaker, gotTaker, err := computeMarketOrderAmounts(tt.price, tt.amount, Sell)
+			if err != nil {
+				t.Fatalf("computeMarketOrderAmounts(%s, %s, Sell) error = %v", tt.price, tt.amount, err)
+			}
+			if gotMaker != tt.wantMaker {
+				t.Errorf("makerAmount = %s, want %s", gotMaker, tt.wantMaker)
+			}
+			if gotTaker != tt.wantTaker {
+				t.Errorf("takerAmount = %s, want %s", gotTaker, tt.wantTaker)
+			}
+		})
 	}
-	if taker != "50000000" {
-		t.Errorf("market BUY takerAmount = %s, want 50000000", taker)
+}
+
+func TestComputeMarketOrderAmounts_Errors(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		price  string
+		amount string
+		side   Side
+	}{
+		{"zero_price", "0", "100", Buy},
+		{"zero_amount", "0.5", "0", Buy},
+		{"negative_amount", "0.5", "-10", Sell},
+		{"invalid_price", "abc", "100", Buy},
+		{"invalid_amount", "0.5", "xyz", Sell},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, err := computeMarketOrderAmounts(tt.price, tt.amount, tt.side)
+			if err == nil {
+				t.Fatalf("expected error for %v", tt)
+			}
+		})
 	}
 }
 
 func TestRoundToTickSize(t *testing.T) {
-	tests := []struct {
+	for _, tt := range []struct {
 		price    string
 		tickSize string
 		want     string
@@ -114,9 +173,7 @@ func TestRoundToTickSize(t *testing.T) {
 		{"0.3333", "0.01", "0.33"},
 		{"0.0326", "0.001", "0.032"},
 		{"0.123456", "0.0001", "0.1234"},
-	}
-
-	for _, tt := range tests {
+	} {
 		t.Run(tt.price+"_"+tt.tickSize, func(t *testing.T) {
 			got, err := roundToTickSize(tt.price, tt.tickSize)
 			if err != nil {
@@ -129,12 +186,32 @@ func TestRoundToTickSize(t *testing.T) {
 	}
 }
 
-func TestRoundToTickSize_ZeroTick(t *testing.T) {
-	got, err := roundToTickSize("0.673", "0")
-	if err != nil {
-		t.Fatal(err)
+func TestValidateBytes32Hex(t *testing.T) {
+	valid := []string{
+		"0x0000000000000000000000000000000000000000000000000000000000000000",
+		"0xABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789",
 	}
-	if got != "0.673000" {
-		t.Errorf("zero tick size result = %q, want 0.673000", got)
+	for _, v := range valid {
+		if err := ValidateBytes32Hex("test", v); err != nil {
+			t.Errorf("ValidateBytes32Hex(%q) error = %v", v, err)
+		}
+	}
+
+	for _, tt := range []struct {
+		value string
+		name  string
+	}{
+		{"not-hex", "no-prefix"},
+		{"0xabc", "too-short"},
+		{"0x" + "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdeff", "too-long"},
+		{"0xGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG", "bad-char"},
+	} {
+		if err := ValidateBytes32Hex("test", tt.value); err == nil {
+			t.Errorf("ValidateBytes32Hex(%q) expected error for %s", tt.value, tt.name)
+		}
+	}
+
+	if err := ValidateBytes32Hex("test", ""); err != nil {
+		t.Errorf("empty string should be valid, got %v", err)
 	}
 }

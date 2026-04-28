@@ -48,8 +48,52 @@ func computeOrderAmounts(price, size string, side Side) (makerAmount, takerAmoun
 	return takerInt.String(), makerInt.String(), nil
 }
 
-func computeMarketOrderAmounts(worstPrice, size string, side Side) (makerAmount, takerAmount string, err error) {
-	return computeOrderAmounts(worstPrice, size, side)
+// computeMarketOrderAmounts computes makerAmount/takerAmount for FOK/FAK market orders.
+//
+// BUY market order: amount is USDC (pUSD) the user wants to spend.
+//
+//	makerAmount = amount x 1e6         (USDC offered)
+//	takerAmount = amount / price x 1e6 (tokens wanted at worstPrice)
+//
+// SELL market order: amount is shares the user wants to sell.
+//
+//	makerAmount = amount x 1e6         (tokens offered)
+//	takerAmount = amount x price x 1e6 (USDC wanted)
+func computeMarketOrderAmounts(price, amount string, side Side) (makerAmount, takerAmount string, err error) {
+	p, err := parseRat(price, "price")
+	if err != nil {
+		return "", "", err
+	}
+	a, err := parseRat(amount, "amount")
+	if err != nil {
+		return "", "", err
+	}
+
+	if side != Buy && side != Sell {
+		return "", "", fmt.Errorf("polymarket: invalid side %q", side)
+	}
+	if p.Sign() <= 0 {
+		return "", "", fmt.Errorf("polymarket: market order price must be > 0, got %v", price)
+	}
+	if a.Sign() <= 0 {
+		return "", "", fmt.Errorf("polymarket: market order amount must be > 0, got %v", amount)
+	}
+
+	scale := new(big.Int).SetInt64(orderScale)
+	amtScaled := new(big.Rat).Mul(a, new(big.Rat).SetInt(scale))
+
+	if side == Buy {
+		// buyer: makerAmount = USDC, takerAmount = USDC / price (tokens)
+		makerInt := truncRat(amtScaled)
+		takerAmt := new(big.Rat).Quo(a, p)
+		takerScaled := new(big.Rat).Mul(takerAmt, new(big.Rat).SetInt(scale))
+		return makerInt.String(), truncRat(takerScaled).String(), nil
+	}
+	// seller: makerAmount = shares, takerAmount = shares x price (USDC)
+	makerInt := truncRat(amtScaled)
+	takerAmt := new(big.Rat).Mul(a, p)
+	takerScaled := new(big.Rat).Mul(takerAmt, new(big.Rat).SetInt(scale))
+	return makerInt.String(), truncRat(takerScaled).String(), nil
 }
 
 func parseRat(s, name string) (*big.Rat, error) {
@@ -74,17 +118,36 @@ func roundToTickSize(price, tickSize string) (string, error) {
 		return "", err
 	}
 	if t.Sign() <= 0 {
-		return p.FloatString(6), nil
+		return price, nil
 	}
 
 	div := new(big.Rat).Quo(p, t)
 	floorDiv := new(big.Int).Div(div.Num(), div.Denom())
 	rounded := new(big.Rat).Mul(new(big.Rat).SetInt(floorDiv), t)
 	s := rounded.FloatString(6)
-	// strip unnecessary trailing zeros (keep at least 2 decimal places for tick-like prices)
 	s = strings.TrimRight(s, "0")
 	if dot := strings.LastIndex(s, "."); dot >= 0 && len(s)-dot <= 2 {
-		s += "0" // keep "0.50" not "0.5"
+		s += "0"
 	}
 	return s, nil
+}
+
+// ValidateBytes32Hex checks that v is empty or a valid 0x-prefixed bytes32 hex string.
+func ValidateBytes32Hex(name, v string) error {
+	if v == "" {
+		return nil
+	}
+	if !strings.HasPrefix(v, "0x") && !strings.HasPrefix(v, "0X") {
+		return fmt.Errorf("polymarket: %s must be 0x-prefixed hex, got %q", name, v)
+	}
+	hex := v[2:]
+	if len(hex) != 64 {
+		return fmt.Errorf("polymarket: %s must be 64 hex chars (bytes32), got %d chars", name, len(hex))
+	}
+	for _, c := range hex {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return fmt.Errorf("polymarket: %s contains invalid hex char %q", name, c)
+		}
+	}
+	return nil
 }
