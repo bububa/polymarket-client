@@ -34,6 +34,9 @@ const (
 	SignatureTypeEOA SignatureType = iota
 	SignatureTypeProxy
 	SignatureTypeGnosisSafe
+	// SignatureTypePoly1271 is for EIP-1271 contract wallet validation.
+	// Supported by the exchange contract, but not listed on the simplified
+	// Create Order documentation page.
 	SignatureTypePoly1271
 )
 
@@ -417,7 +420,7 @@ type PostOrderRequest struct {
 	// OrderType is the execution type (GTC, FOK, GTD).
 	OrderType OrderType `json:"orderType"`
 	// DeferExec defers order execution for later processing.
-	DeferExec bool `json:"deferExec,omitempty"`
+	DeferExec *bool `json:"deferExec,omitempty"`
 }
 
 // PostOrderResponse is returned after order submission.
