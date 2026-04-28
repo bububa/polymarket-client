@@ -33,6 +33,37 @@
 //	    clob.WithChainID(clob.PolygonChainID),
 //	)
 //
+// # Trading with OrderBuilder (Recommended)
+//
+// The OrderBuilder handles price/size conversion, tick-size validation,
+// neg-risk detection, and EIP-712 signing automatically:
+//
+//	b := clob.NewOrderBuilder(client)
+//
+//	// Limit order — auto-fetches tickSize and negRisk
+//	resp, err := b.CreateAndPostOrderForToken(ctx, clob.OrderArgsV2{
+//	    TokenID: "token-id", Price: "0.50", Size: "10.0", Side: clob.SideBuy,
+//	}, clob.GTC, nil)
+//
+//	// Market order — Amount is USDC for BUY, shares for SELL
+//	resp, err := b.CreateAndPostMarketOrderForToken(ctx, clob.MarketOrderArgsV2{
+//	    TokenID: "token-id", Price: "0.50", Amount: "100", Side: clob.SideBuy,
+//	}, clob.FOK, nil)
+//
+// The *ForToken methods automatically call GetMarketOptions to retrieve
+// tickSize and negRisk from the CLOB API. For manual control, use:
+//
+//	b.BuildOrder(args, clob.CreateOrderOptions{TickSize: "0.01", NegRisk: false})
+//
+// OrderBuilder constructs, validates, signs, and optionally submits orders.
+// It does not check balance, allowance, or reserved open order capacity.
+//
+// # Low-Level PostOrder
+//
+// PostOrder requires a pre-built SignedOrder and auth headers:
+//
+//	client.PostOrder(ctx, clob.PostOrderRequest{Order: signed, Owner: addr, OrderType: clob.GTC})
+//
 // # Market Data (No Auth Required)
 //
 //	market := clob.ClobMarketInfo{ConditionID: "0xabc123"}

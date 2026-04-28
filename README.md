@@ -58,11 +58,15 @@ func main() {
 
 ### Trading (L2 Authentication Required)
 
+The easiest way to trade is using the `OrderBuilder`, which handles price
+conversion, tick-size validation, and market option lookups automatically:
+
 ```go
 package main
 
 import (
     "context"
+    "fmt"
 
     "github.com/ethereum/go-ethereum/crypto"
 
@@ -71,7 +75,6 @@ import (
 )
 
 func main() {
-    // Load your private key (never hardcode in production)
     privateKey, _ := crypto.HexToECDSA("your-private-key-hex")
 
     client := clob.NewClient("",
@@ -84,19 +87,43 @@ func main() {
         clob.WithChainID(clob.PolygonChainID), // 137
     )
 
-    // Place an order
-    order, err := client.PostOrder(context.Background(), clob.PostOrderRequest{
-        TokenID: "token-id",
-        Price:   clob.Float64{Value: 0.50},
-        Size:    clob.Float64{Value: 10.0},
+    b := clob.NewOrderBuilder(client)
+
+    // Place a limit order (auto-fetches tickSize and negRisk)
+    resp, err := b.CreateAndPostOrderForToken(context.Background(), clob.OrderArgsV2{
+        TokenID: "your-token-id",
+        Price:   "0.50",   // price per share
+        Size:    "10.0",   // number of shares
         Side:    clob.SideBuy,
-    })
+    }, clob.GTC, nil)
     if err != nil {
         panic(err)
     }
-    fmt.Printf("Order placed: %s\n", order.Success)
+    fmt.Printf("Order placed: %s (success=%v)\n", resp.OrderID, resp.Success)
 }
 ```
+
+For advanced use cases (pre-fetched market options, custom tick-size handling):
+
+```go
+b := clob.NewOrderBuilder(client)
+
+// Advanced: manually supply tickSize and negRisk
+order, err := b.BuildOrder(clob.OrderArgsV2{
+    TokenID: "your-token-id",
+    Price:   "0.50",
+    Size:    "10.0",
+    Side:    clob.SideBuy,
+}, clob.CreateOrderOptions{TickSize: "0.01", NegRisk: false})
+
+// Then post manually
+resp, err := b.CreateAndPostOrder(ctx, args, opts, clob.GTC, nil)
+```
+
+> **Note**: `OrderBuilder` only constructs, validates, signs, and optionally
+> submits orders. It does **not** check balance, allowance, or reserved
+> open-order capacity. The caller is responsible for ensuring sufficient
+> funds before posting.
 
 ### Using Other APIs
 
@@ -130,6 +157,7 @@ relayerClient := relayer.New(relayer.Config{
 |---|---|---|---|
 | [`clob`](#clob-package) | CLOB v2 — orders, markets, positions, RFQ | `https://clob.polymarket.com` | Depends on endpoint |
 | [`clob/ws`](#clobws-package) | WebSocket live order book & updates | `wss://ws-orderbook.clob.polymarket.com` | L2 |
+| [`clob/ws/rtds`](#clobws-package) | WebSocket real-time data subscriptions | `wss://ws-data.clob.polymarket.com` | None |
 | [`relayer`](#relayer-package) | Submit signed on-chain transactions | `https://relayer-v2.polymarket.com` | L1 |
 | [`data`](#data-package) | Positions, trades, activity, leaderboard | `https://data-api.polymarket.com` | None |
 | [`gamma`](#gamma-package) | Market search, events, tags, profiles | `https://gamma-api.polymarket.com` | None |
@@ -194,6 +222,39 @@ All CLOB v2 endpoints:
 | `GetOrder` | `/data/order/:id` | Get order by ID |
 | `GetOpenOrders` | `/data/orders` | List open orders |
 | `GetTrades` | `/data/trades` | List user trades |
+| `GetTickSize` | `/tick-size` | Minimum price increment |
+| `GetTickSizeByTokenID` | `/tick-size/:id` | Minimum price increment by token |
+| `GetNegRisk` | `/neg-risk` | Whether a token uses neg-risk resolution |
+
+### OrderBuilder (Recommended for Trading)
+
+The `OrderBuilder` provides a high-level API that automatically fetches
+`tickSize` and `negRisk` from the CLOB API, so you don't need to supply them:
+
+```go
+b := clob.NewOrderBuilder(client)
+
+// Limit order — auto-fetches tickSize + negRisk
+resp, err := b.CreateAndPostOrderForToken(ctx, clob.OrderArgsV2{
+    TokenID: "token-id",
+    Price:   "0.50",
+    Size:    "10.0",
+    Side:    clob.SideBuy,
+}, clob.GTC, nil)
+
+// Market order — Amount is USDC for BUY, shares for SELL
+resp, err := b.CreateAndPostMarketOrderForToken(ctx, clob.MarketOrderArgsV2{
+    TokenID: "token-id",
+    Price:   "0.50",   // worst-price limit
+    Amount:  "100",    // BUY: USDC to spend / SELL: shares to sell
+    Side:    clob.SideBuy,
+}, clob.FOK, nil)
+```
+
+**Order types**: `GTC`, `GTD` for limit orders; `FOK`, `FAK` for market orders.
+
+> `deferExec` (post-only) is only valid with `GTC`/`GTD`. Pairing it with
+> `FOK`/`FAK` returns an error.
 
 ### RFQ (Request for Quote) (AuthL2)
 
@@ -256,11 +317,14 @@ go mod tidy
 
 | File | Coverage |
 |---|---|
-| `clob/auth_test.go` | Auth header generation |
+| `clob/auth_test.go` | Auth header generation, HMAC signatures |
 | `clob/client_test.go` | CLOB v2 endpoints, flexible JSON parsing |
 | `clob/ctf_test.go` | CTF relayer transaction submission |
+| `clob/amount_test.go` | Amount calculation, tick validation, bytes32 checks |
+| `clob/order_builder_test.go` | OrderBuilder price invariants, market order semantics, deferExec |
+| `clob/sign_order_test.go` | V2 signing, domain hash, expiration handling |
 | `relayer/client_test.go` | Relayer documented endpoints |
-| `shared/flex_test.go` | flexible JSON scalar serialization |
+| `shared/flex_test.go` | Flexible JSON scalar serialization |
 
 ## License
 
