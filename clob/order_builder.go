@@ -45,12 +45,10 @@ func NewOrderBuilder(client *Client) *OrderBuilder {
 }
 
 func (b *OrderBuilder) BuildOrder(args OrderArgsV2, opts CreateOrderOptions) (*SignedOrder, error) {
-	err := ValidateBytes32Hex("builder", args.BuilderCode)
-	if err != nil {
+	if err := ValidateBytes32Hex("builder", args.BuilderCode); err != nil {
 		return nil, err
 	}
-	err = ValidateBytes32Hex("metadata", args.Metadata)
-	if err != nil {
+	if err := ValidateBytes32Hex("metadata", args.Metadata); err != nil {
 		return nil, err
 	}
 	if err := validatePriceRange(args.Price, false); err != nil {
@@ -170,6 +168,65 @@ func (b *OrderBuilder) CreateAndPostMarketOrder(ctx context.Context, args Market
 		return nil, err
 	}
 	return out, nil
+}
+
+type OrderBuilderConfig struct {
+	TickSize string
+	NegRisk  bool
+}
+
+type GetMarketOptionsResponse struct {
+	TickSize string
+	NegRisk  bool
+}
+
+func (b *OrderBuilder) GetMarketOptions(ctx context.Context, tokenID string) (*GetMarketOptionsResponse, error) {
+	var tick TickSizeResponse
+	if err := b.client.GetTickSizeByTokenID(ctx, tokenID, &tick); err != nil {
+		return nil, fmt.Errorf("polymarket: get tick size: %w", err)
+	}
+	var neg NegRiskResponse
+	if err := b.client.GetNegRisk(ctx, tokenID, &neg); err != nil {
+		return nil, fmt.Errorf("polymarket: get neg risk: %w", err)
+	}
+	return &GetMarketOptionsResponse{
+		TickSize: string(tick.MinimumTickSize),
+		NegRisk:  neg.NegRisk,
+	}, nil
+}
+
+func (b *OrderBuilder) BuildOrderForToken(ctx context.Context, args OrderArgsV2, builderCode, metadata string) (*SignedOrder, error) {
+	opts, err := b.GetMarketOptions(ctx, args.TokenID)
+	if err != nil {
+		return nil, err
+	}
+	return b.BuildOrder(OrderArgsV2{
+		TokenID:       args.TokenID,
+		Price:         args.Price,
+		Size:          args.Size,
+		Side:          args.Side,
+		Expiration:    args.Expiration,
+		SignatureType: args.SignatureType,
+		BuilderCode:   builderCode,
+		Metadata:      metadata,
+	}, CreateOrderOptions{TickSize: opts.TickSize, NegRisk: opts.NegRisk})
+}
+
+func (b *OrderBuilder) CreateAndPostOrderForToken(ctx context.Context, args OrderArgsV2, orderType OrderType, deferExec *bool, builderCode, metadata string) (*PostOrderResponse, error) {
+	opts, err := b.GetMarketOptions(ctx, args.TokenID)
+	if err != nil {
+		return nil, err
+	}
+	return b.CreateAndPostOrder(ctx, OrderArgsV2{
+		TokenID:       args.TokenID,
+		Price:         args.Price,
+		Size:          args.Size,
+		Side:          args.Side,
+		Expiration:    args.Expiration,
+		SignatureType: args.SignatureType,
+		BuilderCode:   builderCode,
+		Metadata:      metadata,
+	}, CreateOrderOptions{TickSize: opts.TickSize, NegRisk: opts.NegRisk}, orderType, deferExec)
 }
 
 // validateDeferExec ensures deferExec (post-only) is only used with GTC/GTD.

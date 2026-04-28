@@ -160,7 +160,7 @@ func TestComputeMarketOrderAmounts_Errors(t *testing.T) {
 	}
 }
 
-func TestValidatePriceTicks(t *testing.T) {
+func TestValidatePriceTicks_Aligned(t *testing.T) {
 	valid := []struct {
 		price    string
 		tickSize string
@@ -180,8 +180,7 @@ func TestValidatePriceTicks(t *testing.T) {
 			}
 		})
 	}
-
-	invalid := []struct {
+	misaligned := []struct {
 		price    string
 		tickSize string
 	}{
@@ -190,12 +189,33 @@ func TestValidatePriceTicks(t *testing.T) {
 		{"0.3333", "0.01"},
 		{"0.0326", "0.001"},
 	}
-	for _, tt := range invalid {
+	for _, tt := range misaligned {
 		t.Run(tt.price+"_"+tt.tickSize, func(t *testing.T) {
 			if err := validatePriceTicks(tt.price, tt.tickSize); err == nil {
 				t.Errorf("validatePriceTicks(%s, %s) expected error", tt.price, tt.tickSize)
 			}
 		})
+	}
+}
+
+func TestValidatePriceTicks_RejectsNonPositive(t *testing.T) {
+	invalid := []struct {
+		price    string
+		tickSize string
+	}{
+		{"0.50", "0"},
+		{"0.50", "-0.01"},
+		{"0.50", "0.0"},
+	}
+	for _, tt := range invalid {
+		t.Run(tt.price+"_"+tt.tickSize, func(t *testing.T) {
+			if err := validatePriceTicks(tt.price, tt.tickSize); err == nil {
+				t.Errorf("validatePriceTicks(%s, %s) expected error for non-positive tickSize", tt.price, tt.tickSize)
+			}
+		})
+	}
+	if err := validatePriceTicks("0.503", ""); err != nil {
+		t.Errorf("empty tickSize should skip validation, got %v", err)
 	}
 }
 

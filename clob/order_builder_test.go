@@ -98,8 +98,80 @@ func TestBuildOrder_Sell(t *testing.T) {
 	if order.MakerAmount.String() != "100000000" {
 		t.Errorf("makerAmount = %s, want 100000000", order.MakerAmount)
 	}
+	// SELL: takerAmount = ceil(price * size * 1e6) = ceil(25000000) = 25000000
 	if order.TakerAmount.String() != "25000000" {
 		t.Errorf("takerAmount = %s, want 25000000", order.TakerAmount)
+	}
+}
+
+func TestBuildOrder_SellPriceInvariant(t *testing.T) {
+	signer := testKey()
+	client := NewClient("", WithSigner(signer))
+	b := NewOrderBuilder(client)
+
+	// SELL with non-integer takerAmount to verify ceil protection
+	// price=0.3333333, size=1.0:
+	// raw takerAmount = 333333.3 → ceil → 333334
+	// implied price = 333334 / 1000000 = 0.333334 >= 0.3333333
+	order, err := b.BuildOrder(OrderArgsV2{
+		TokenID: "123456",
+		Price:   "0.3333333",
+		Size:    "1.0",
+		Side:    Sell,
+	}, CreateOrderOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	takerVal, err := strconv.ParseInt(order.TakerAmount.String(), 10, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	makerVal, err := strconv.ParseInt(order.MakerAmount.String(), 10, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if takerVal == 0 || makerVal == 0 {
+		t.Fatal("zero amount")
+	}
+	impliedPrice := float64(takerVal) / float64(makerVal)
+	if impliedPrice < 0.3333333 {
+		t.Errorf("SELL implied price = %f, must be >= 0.3333333 (limit price)", impliedPrice)
+	}
+}
+
+func TestBuildOrder_BuyPriceInvariant(t *testing.T) {
+	signer := testKey()
+	client := NewClient("", WithSigner(signer))
+	b := NewOrderBuilder(client)
+
+	// BUY with non-integer takerAmount
+	// price=0.3333333, size=0.7:
+	// makerAmount = floor(233333.31) = 233333
+	// takerAmount = floor(700000) = 700000
+	// implied price = 233333 / 700000 = 0.333332... <= 0.3333333
+	order, err := b.BuildOrder(OrderArgsV2{
+		TokenID: "123456",
+		Price:   "0.3333333",
+		Size:    "0.7",
+		Side:    Buy,
+	}, CreateOrderOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	makerVal, err := strconv.ParseInt(order.MakerAmount.String(), 10, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	takerVal, err := strconv.ParseInt(order.TakerAmount.String(), 10, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if makerVal == 0 || takerVal == 0 {
+		t.Fatal("zero amount")
+	}
+	impliedPrice := float64(makerVal) / float64(takerVal)
+	if impliedPrice > 0.3333333 {
+		t.Errorf("BUY implied price = %f, must be <= 0.3333333 (limit price)", impliedPrice)
 	}
 }
 

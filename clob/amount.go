@@ -11,8 +11,15 @@ const orderScale = 1_000_000
 // computeOrderAmounts converts price and size into makerAmount/takerAmount strings
 // at 6-decimal precision (Polymarket CLOB integer format).
 //
-// BUY:  makerAmount = price x size x 1e6 (USDC), takerAmount = size x 1e6 (tokens)
-// SELL: makerAmount = size x 1e6 (tokens),   takerAmount = price x size x 1e6 (USDC)
+// BUY:  makerAmount = floor(price x size x 1e6)  (USDC offered)
+//
+//	takerAmount = floor(size x 1e6)              (tokens wanted)
+//	Invariant: makerAmount / takerAmount <= limit price
+//
+// SELL: makerAmount = floor(size x 1e6)          (tokens offered)
+//
+//	takerAmount = ceil(price x size x 1e6)       (USDC wanted)
+//	Invariant: takerAmount / makerAmount >= limit price
 func computeOrderAmounts(price, size string, side Side) (makerAmount, takerAmount string, err error) {
 	p, err := parseRat(price, "price")
 	if err != nil {
@@ -45,7 +52,9 @@ func computeOrderAmounts(price, size string, side Side) (makerAmount, takerAmoun
 	if side == Buy {
 		return makerInt.String(), takerInt.String(), nil
 	}
-	return takerInt.String(), makerInt.String(), nil
+	// SELL: makerAmount = shares (floor), takerAmount = USDC (ceil → protects limit price)
+	takerAmountInt := ceilRat(monetaryScaled)
+	return takerInt.String(), takerAmountInt.String(), nil
 }
 
 // computeMarketOrderAmounts computes makerAmount/takerAmount for FOK/FAK market orders.
@@ -122,7 +131,7 @@ func ceilRat(r *big.Rat) *big.Int {
 }
 
 // validatePriceTicks checks that price is an exact multiple of the given tick size.
-// Empty tickSize means "no validation".
+// Empty tickSize means "no validation". Non-empty tickSize must be positive.
 func validatePriceTicks(price, tickSize string) error {
 	if tickSize == "" || price == "" {
 		return nil
@@ -136,7 +145,7 @@ func validatePriceTicks(price, tickSize string) error {
 		return err
 	}
 	if t.Sign() <= 0 {
-		return nil
+		return fmt.Errorf("polymarket: tickSize must be positive, got %q", tickSize)
 	}
 	if !isExactMultiple(p, t) {
 		return fmt.Errorf("polymarket: price %q is not aligned to tick size %q", price, tickSize)
