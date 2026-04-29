@@ -107,7 +107,8 @@ func NewClient(host string, opts ...Option) *Client {
 
 func (c *Client) Host() string { return c.host }
 
-func (c *Client) Signer() *polyauth.Signer { return c.auth.Signer }
+func (c *Client) Signer() *polyauth.Signer  { return c.auth.Signer }
+func (c *Client) Credentials() *Credentials { return c.auth.Credentials }
 
 // SubmitRelayerTransaction submits a pre-signed transaction through the configured relayer.
 func (c *Client) SubmitRelayerTransaction(ctx context.Context, req relayer.SubmitTransactionRequest, out *relayer.SubmitTransactionResponse) error {

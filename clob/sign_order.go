@@ -137,15 +137,6 @@ func prepareOrderForSigning(signer *polyauth.Signer, order *SignedOrder, config 
 	if err := validateUint256String("takerAmount", order.TakerAmount, true, true); err != nil {
 		return err
 	}
-	if order.TokenID == "" {
-		return errors.New("polymarket: tokenId is required")
-	}
-	if order.MakerAmount == "" {
-		return errors.New("polymarket: makerAmount is required")
-	}
-	if order.TakerAmount == "" {
-		return errors.New("polymarket: takerAmount is required")
-	}
 	if order.Side != Buy && order.Side != Sell {
 		return fmt.Errorf("polymarket: invalid side %q", order.Side)
 	}

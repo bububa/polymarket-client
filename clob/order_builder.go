@@ -149,9 +149,18 @@ func (b *OrderBuilder) CreateAndPostOrder(ctx context.Context, args OrderArgsV2,
 	if err := validateExpiration(orderType, order, time.Now); err != nil {
 		return nil, err
 	}
+	cred := b.client.Credentials()
+	if cred == nil {
+		return nil, fmt.Errorf("polymarket: credentials is required to post order")
+	}
+	owner := cred.Key
+	if owner == "" {
+		return nil, fmt.Errorf("polymarket: credentials key is required to post order")
+	}
+
 	req := PostOrderRequest{
 		Order:     *order,
-		Owner:     order.Maker,
+		Owner:     owner,
 		OrderType: orderType,
 		DeferExec: deferExec,
 	}
@@ -173,9 +182,18 @@ func (b *OrderBuilder) CreateAndPostMarketOrder(ctx context.Context, args Market
 	if err != nil {
 		return nil, err
 	}
+	cred := b.client.Credentials()
+	if cred == nil {
+		return nil, fmt.Errorf("polymarket: credentials is required to post order")
+	}
+	owner := cred.Key
+	if owner == "" {
+		return nil, fmt.Errorf("polymarket: credentials key is required to post order")
+	}
+
 	req := PostOrderRequest{
 		Order:     *order,
-		Owner:     order.Maker,
+		Owner:     owner,
 		OrderType: orderType,
 		DeferExec: deferExec,
 	}
