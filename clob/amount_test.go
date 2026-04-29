@@ -96,6 +96,8 @@ func TestComputeMarketOrderAmounts_BUY(t *testing.T) {
 		{"buy_100usdc_at_0.5", "0.5", "100", "100000000", "200000000"},
 		{"buy_50usdc_at_0.25", "0.25", "50", "50000000", "200000000"},
 		{"buy_10usdc_at_1.0", "1.0", "10", "10000000", "10000000"},
+		{"buy_5usdc_at_0.99_rounds_shares_to_4dp", "0.99", "5", "5000000", "5050600"},
+		{"buy_usdc_rounds_down_to_2dp", "0.50", "5.009", "5000000", "10000000"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			gotMaker, gotTaker, err := computeMarketOrderAmounts(tt.price, tt.amount, Buy)
@@ -122,6 +124,9 @@ func TestComputeMarketOrderAmounts_SELL(t *testing.T) {
 		{"sell_200shares_at_0.45", "0.45", "200", "200000000", "90000000"},
 		{"sell_50shares_at_0.75", "0.75", "50", "50000000", "37500000"},
 		{"sell_10shares_at_1.0", "1.0", "10", "10000000", "10000000"},
+		{"sell_100shares_at_0.333333_rounds_usdc_to_4dp", "0.333333", "100", "100000000", "33333300"},
+		{"sell_shares_rounds_down_to_2dp", "0.50", "5.00009", "5000000", "2500000"},
+		{"sell_fractional_dust_rounds_down_to_2dp", "0.01", "4.6153", "4610000", "46100"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			gotMaker, gotTaker, err := computeMarketOrderAmounts(tt.price, tt.amount, Sell)
