@@ -3,7 +3,6 @@ package clob
 import (
 	"fmt"
 	"math/big"
-	"strings"
 )
 
 const orderScale = 1_000_000
@@ -128,52 +127,4 @@ func ceilRat(r *big.Rat) *big.Int {
 		q.Add(q, big.NewInt(1))
 	}
 	return q
-}
-
-// validatePriceTicks checks that price is an exact multiple of the given tick size.
-// Empty tickSize means "no validation". Non-empty tickSize must be positive.
-func validatePriceTicks(price, tickSize string) error {
-	if tickSize == "" || price == "" {
-		return nil
-	}
-	p, err := parseRat(price, "price")
-	if err != nil {
-		return err
-	}
-	t, err := parseRat(tickSize, "tickSize")
-	if err != nil {
-		return err
-	}
-	if t.Sign() <= 0 {
-		return fmt.Errorf("polymarket: tickSize must be positive, got %q", tickSize)
-	}
-	if !isExactMultiple(p, t) {
-		return fmt.Errorf("polymarket: price %q is not aligned to tick size %q", price, tickSize)
-	}
-	return nil
-}
-
-func isExactMultiple(p, t *big.Rat) bool {
-	div := new(big.Rat).Quo(p, t)
-	return div.IsInt()
-}
-
-// ValidateBytes32Hex checks that v is empty or a valid 0x-prefixed bytes32 hex string.
-func ValidateBytes32Hex(name, v string) error {
-	if v == "" {
-		return nil
-	}
-	if !strings.HasPrefix(v, "0x") && !strings.HasPrefix(v, "0X") {
-		return fmt.Errorf("polymarket: %s must be 0x-prefixed hex, got %q", name, v)
-	}
-	hex := v[2:]
-	if len(hex) != 64 {
-		return fmt.Errorf("polymarket: %s must be 64 hex chars (bytes32), got %d chars", name, len(hex))
-	}
-	for _, c := range hex {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
-			return fmt.Errorf("polymarket: %s contains invalid hex char %q", name, c)
-		}
-	}
-	return nil
 }

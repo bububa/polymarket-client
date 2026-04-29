@@ -15,8 +15,19 @@ type OrderArgsV2 struct {
 	Side          Side
 	Expiration    string
 	SignatureType SignatureType
-	BuilderCode   string
-	Metadata      string
+
+	// Maker is the funder/proxy/safe wallet address that owns the order.
+	// If empty, SignOrder defaults maker to the signer address.
+	//
+	// EOA:
+	//   Maker may be empty, or equal to signer address.
+	//
+	// POLY_PROXY / POLY_GNOSIS_SAFE:
+	//   Maker should be the funder/proxy/safe address associated with the API key.
+	Maker string
+
+	BuilderCode string
+	Metadata    string
 }
 
 type MarketOrderArgsV2 struct {
@@ -27,8 +38,13 @@ type MarketOrderArgsV2 struct {
 	Amount        string // BUY: USDC (pUSD) to spend, SELL: shares to sell
 	Side          Side
 	SignatureType SignatureType
-	BuilderCode   string
-	Metadata      string
+
+	// Maker is the funder/proxy/safe wallet address that owns the order.
+	// If empty, SignOrder defaults maker to the signer address.
+	Maker string
+
+	BuilderCode string
+	Metadata    string
 }
 
 type CreateOrderOptions struct {
@@ -57,12 +73,6 @@ func NewOrderBuilder(client *Client) *OrderBuilder {
 // BuildOrder only constructs, validates, and signs orders.
 // It does not check balance, allowance, or reserved open order capacity.
 func (b *OrderBuilder) BuildOrder(args OrderArgsV2, opts CreateOrderOptions) (*SignedOrder, error) {
-	if err := ValidateBytes32Hex("builder", args.BuilderCode); err != nil {
-		return nil, err
-	}
-	if err := ValidateBytes32Hex("metadata", args.Metadata); err != nil {
-		return nil, err
-	}
 	if err := validatePriceRange(args.Price, false); err != nil {
 		return nil, err
 	}
@@ -70,17 +80,18 @@ func (b *OrderBuilder) BuildOrder(args OrderArgsV2, opts CreateOrderOptions) (*S
 		return nil, err
 	}
 
-	maker, taker, err := computeOrderAmounts(args.Price, args.Size, args.Side)
+	makerAmount, takerAmount, err := computeOrderAmounts(args.Price, args.Size, args.Side)
 	if err != nil {
 		return nil, err
 	}
 
 	order := &SignedOrder{
 		TokenID:       String(args.TokenID),
-		MakerAmount:   String(maker),
-		TakerAmount:   String(taker),
+		MakerAmount:   String(makerAmount),
+		TakerAmount:   String(takerAmount),
 		Side:          args.Side,
 		SignatureType: args.SignatureType,
+		Maker:         args.Maker,
 		Builder:       args.BuilderCode,
 		Metadata:      args.Metadata,
 		Expiration:    String("0"),
@@ -97,14 +108,6 @@ func (b *OrderBuilder) BuildOrder(args OrderArgsV2, opts CreateOrderOptions) (*S
 }
 
 func (b *OrderBuilder) BuildMarketOrder(args MarketOrderArgsV2, opts CreateOrderOptions) (*SignedOrder, error) {
-	err := ValidateBytes32Hex("builder", args.BuilderCode)
-	if err != nil {
-		return nil, err
-	}
-	err = ValidateBytes32Hex("metadata", args.Metadata)
-	if err != nil {
-		return nil, err
-	}
 	if err := validatePriceRange(args.Price, true); err != nil {
 		return nil, err
 	}
@@ -112,17 +115,18 @@ func (b *OrderBuilder) BuildMarketOrder(args MarketOrderArgsV2, opts CreateOrder
 		return nil, err
 	}
 
-	maker, taker, err := computeMarketOrderAmounts(args.Price, args.Amount, args.Side)
+	makerAmount, takerAmount, err := computeMarketOrderAmounts(args.Price, args.Amount, args.Side)
 	if err != nil {
 		return nil, err
 	}
 
 	order := &SignedOrder{
 		TokenID:       String(args.TokenID),
-		MakerAmount:   String(maker),
-		TakerAmount:   String(taker),
+		MakerAmount:   String(makerAmount),
+		TakerAmount:   String(takerAmount),
 		Side:          args.Side,
 		SignatureType: args.SignatureType,
+		Maker:         args.Maker,
 		Expiration:    String("0"),
 		Builder:       args.BuilderCode,
 		Metadata:      args.Metadata,

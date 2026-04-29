@@ -387,7 +387,7 @@ type SignedOrder struct {
 	// with the generic "Invalid order payload" error. Bug discovered
 	// 2026-04-28 against production. The salt generator is bounded to
 	// the current ms timestamp (≤ ~1.78e12) so int64 safely fits.
-	Salt Int64 `json:"salt"`
+	Salt String `json:"salt"`
 	// Maker is the order creator address.
 	Maker string `json:"maker"`
 	// Signer is the signing authority address.

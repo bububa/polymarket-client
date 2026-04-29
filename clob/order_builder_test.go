@@ -6,9 +6,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/bububa/polymarket-client/internal/polyauth"
+	"github.com/stretchr/testify/require"
 )
 
 func testKey() *polyauth.Signer {
@@ -509,4 +511,62 @@ func TestBuildOrder_EmptyTickSizeSkipsTickValidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error with empty TickSize, got %v", err)
 	}
+}
+
+func TestBuildOrder_WithMakerUsesFunderAsMaker(t *testing.T) {
+	signer := testKey()
+	client := NewClient("", WithSigner(signer))
+	builder := NewOrderBuilder(client)
+
+	funder := "0x1111111111111111111111111111111111111111"
+
+	order, err := builder.BuildOrder(OrderArgsV2{
+		TokenID:       "123",
+		Price:         "0.50",
+		Size:          "10",
+		Side:          Buy,
+		SignatureType: SignatureTypeProxy,
+		Maker:         funder,
+	}, CreateOrderOptions{TickSize: "0.01"})
+
+	require.NoError(t, err)
+	require.Equal(t, strings.ToLower(funder), strings.ToLower(order.Maker))
+	require.NotEmpty(t, order.Signature)
+}
+
+func TestBuildOrder_EmptyMakerDefaultsToSigner(t *testing.T) {
+	signer := testKey()
+	client := NewClient("", WithSigner(signer))
+	builder := NewOrderBuilder(client)
+
+	order, err := builder.BuildOrder(OrderArgsV2{
+		TokenID:       "123",
+		Price:         "0.50",
+		Size:          "10",
+		Side:          Buy,
+		SignatureType: SignatureTypeEOA,
+	}, CreateOrderOptions{TickSize: "0.01"})
+
+	require.NoError(t, err)
+	require.Equal(t, strings.ToLower(client.Signer().Address().Hex()), strings.ToLower(order.Maker))
+}
+
+func TestBuildMarketOrder_WithMakerUsesFunderAsMaker(t *testing.T) {
+	signer := testKey()
+	client := NewClient("", WithSigner(signer))
+	builder := NewOrderBuilder(client)
+
+	funder := "0x1111111111111111111111111111111111111111"
+
+	order, err := builder.BuildMarketOrder(MarketOrderArgsV2{
+		TokenID:       "123",
+		Price:         "0.50",
+		Amount:        "100",
+		Side:          Buy,
+		SignatureType: SignatureTypeProxy,
+		Maker:         funder,
+	}, CreateOrderOptions{TickSize: "0.01"})
+
+	require.NoError(t, err)
+	require.Equal(t, strings.ToLower(funder), strings.ToLower(order.Maker))
 }
