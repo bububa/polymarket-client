@@ -154,7 +154,7 @@ func prepareOrderForSigning(signer *polyauth.Signer, order *SignedOrder, config 
 	default:
 		return fmt.Errorf("polymarket: invalid signatureType %d", order.SignatureType)
 	}
-	if order.Salt == "" {
+	if order.Salt == 0 {
 		salt := config.salt
 		if salt == nil {
 			generated, err := randomOrderSalt()
@@ -163,9 +163,9 @@ func prepareOrderForSigning(signer *polyauth.Signer, order *SignedOrder, config 
 			}
 			salt = generated
 		}
-		order.Salt = String(salt.String())
-	} else if err := validateUint256String("salt", order.Salt, true, true); err != nil {
-		return err
+		order.Salt = Int64(salt.Int64())
+	} else if order.Salt < 0 {
+		return fmt.Errorf("polymarket: salt must be non-negative")
 	}
 	if order.Timestamp == "" {
 		order.Timestamp = String(strconv.FormatInt(config.now().UnixMilli(), 10))
@@ -206,7 +206,7 @@ func buildOrderTypedData(chainID int64, verifyingContract common.Address, order 
 			VerifyingContract: verifyingContract.Hex(),
 		},
 		Message: apitypes.TypedDataMessage{
-			"salt":          order.Salt,
+			"salt":          strconv.FormatInt(int64(order.Salt), 10),
 			"maker":         order.Maker,
 			"signer":        order.Signer,
 			"tokenId":       order.TokenID.String(),

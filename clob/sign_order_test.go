@@ -34,7 +34,7 @@ func TestSignOrderFillsV2Defaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if order.Salt != "42" {
+	if order.Salt != 42 {
 		t.Fatalf("salt = %d, want 42", order.Salt)
 	}
 	if order.Timestamp.String() != "1700000000000" {
@@ -83,7 +83,7 @@ func TestSignatureTypeEnumValues(t *testing.T) {
 
 func TestSignedOrderJSONMarshal_NoV1Fields(t *testing.T) {
 	order := SignedOrder{
-		Salt:          "42",
+		Salt:          42,
 		Maker:         "0x0000000000000000000000000000000000000001",
 		Signer:        "0x0000000000000000000000000000000000000002",
 		TokenID:       "123",
@@ -110,7 +110,7 @@ func TestSignedOrderJSONMarshal_NoV1Fields(t *testing.T) {
 
 func TestSignedOrderJSON_ExpirationOmitEmpty(t *testing.T) {
 	gtc := SignedOrder{
-		Salt:          "42",
+		Salt:          42,
 		Maker:         "0x0000000000000000000000000000000000000001",
 		Signer:        "0x0000000000000000000000000000000000000002",
 		TokenID:       "123",
@@ -145,7 +145,7 @@ func TestEIP712TypedData_ExcludesV2ForbiddenFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	td := buildOrderTypedData(PolygonChainID, contracts.Exchange, SignedOrder{
-		Salt:          "42",
+		Salt:          42,
 		Maker:         "0x0000000000000000000000000000000000000001",
 		Signer:        "0x0000000000000000000000000000000000000002",
 		TokenID:       "123",
@@ -188,7 +188,7 @@ func TestEIP712TypedData_HashMatchesV2Schema(t *testing.T) {
 		t.Fatal(err)
 	}
 	order := SignedOrder{
-		Salt:          "42",
+		Salt:          42,
 		Maker:         "0x0000000000000000000000000000000000000001",
 		Signer:        "0x0000000000000000000000000000000000000001",
 		TokenID:       "123",
@@ -216,7 +216,7 @@ func TestEIP712TypedData_WithExpirationExcluded(t *testing.T) {
 		t.Fatal(err)
 	}
 	order := SignedOrder{
-		Salt:          "42",
+		Salt:          42,
 		Maker:         "0x0000000000000000000000000000000000000001",
 		Signer:        "0x0000000000000000000000000000000000000001",
 		TokenID:       "123",
@@ -244,7 +244,7 @@ func TestEIP712TypedData_WithExpirationExcluded(t *testing.T) {
 func TestPostOrderRequestJSON(t *testing.T) {
 	req := PostOrderRequest{
 		Order: SignedOrder{
-			Salt:          "1",
+			Salt:          1,
 			Maker:         "0x0000000000000000000000000000000000000001",
 			Signer:        "0x0000000000000000000000000000000000000001",
 			TokenID:       "123",
