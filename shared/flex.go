@@ -316,6 +316,7 @@ var timeLayouts = []string{
 	"2006-01-02 15:04:05",
 	"2006-01-02T15:04:05.999999999",
 	"2006-01-02T15:04:05",
+	"2006-01-02",
 }
 
 // ParseTime parses RFC3339, date-only, Unix seconds, or Unix milliseconds values.
