@@ -43,27 +43,124 @@ func TestFlexibleSliceTypes(t *testing.T) {
 }
 
 func TestFlexibleTimeTypes(t *testing.T) {
-	var got struct {
-		Seconds           Time `json:"seconds"`
-		Millis            Time `json:"millis"`
-		RFC3339           Time `json:"rfc3339"`
-		PosgresOffsetHour Time `json:"posgres_offset_hour"`
-		Date              Date `json:"date"`
+	tests := []struct {
+		name string
+		json string
+		want time.Time
+	}{
+		{
+			name: "unix_seconds_string",
+			json: `"1713398400"`,
+			want: time.Date(2024, 4, 18, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "unix_seconds_number",
+			json: `1713398400`,
+			want: time.Date(2024, 4, 18, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "unix_millis_string",
+			json: `"1713398400000"`,
+			want: time.Date(2024, 4, 18, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "unix_millis_number",
+			json: `1713398400000`,
+			want: time.Date(2024, 4, 18, 0, 0, 0, 0, time.UTC),
+		},
+		{
+			name: "rfc3339",
+			json: `"2026-04-25T10:11:12Z"`,
+			want: time.Date(2026, 4, 25, 10, 11, 12, 0, time.UTC),
+		},
+		{
+			name: "rfc3339_nano",
+			json: `"2026-04-25T10:11:12.123456789Z"`,
+			want: time.Date(2026, 4, 25, 10, 11, 12, 123456789, time.UTC),
+		},
+		{
+			name: "postgres_offset_hour",
+			json: `"2024-01-08 22:29:46.138+00"`,
+			want: time.Date(2024, 1, 8, 22, 29, 46, 138000000, time.UTC),
+		},
+		{
+			name: "postgres_offset_hour_no_fraction",
+			json: `"2024-01-08 22:29:46+00"`,
+			want: time.Date(2024, 1, 8, 22, 29, 46, 0, time.UTC),
+		},
+		{
+			name: "postgres_offset_colon",
+			json: `"2024-01-08 22:29:46.138+00:00"`,
+			want: time.Date(2024, 1, 8, 22, 29, 46, 138000000, time.UTC),
+		},
+		{
+			name: "postgres_offset_compact",
+			json: `"2024-01-08 22:29:46.138+0000"`,
+			want: time.Date(2024, 1, 8, 22, 29, 46, 138000000, time.UTC),
+		},
+		{
+			name: "datetime_without_timezone",
+			json: `"2026-04-25 10:11:12"`,
+			want: time.Date(2026, 4, 25, 10, 11, 12, 0, time.UTC),
+		},
+		{
+			name: "datetime_without_timezone_fraction",
+			json: `"2026-04-25 10:11:12.123"`,
+			want: time.Date(2026, 4, 25, 10, 11, 12, 123000000, time.UTC),
+		},
+		{
+			name: "iso_without_timezone",
+			json: `"2026-04-25T10:11:12"`,
+			want: time.Date(2026, 4, 25, 10, 11, 12, 0, time.UTC),
+		},
+		{
+			name: "iso_without_timezone_fraction",
+			json: `"2026-04-25T10:11:12.123"`,
+			want: time.Date(2026, 4, 25, 10, 11, 12, 123000000, time.UTC),
+		},
 	}
-	if err := json.Unmarshal([]byte(`{
-		"seconds":"1713398400",
-		"millis":1713398400000,
-		"rfc3339":"2026-04-25T10:11:12Z",
-		"posgres_offset_hour": "2024-04-08 22:29:46.138+00",
-		"date":"2026-04-25"
-	}`), &got); err != nil {
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got Time
+			if err := json.Unmarshal([]byte(tt.json), &got); err != nil {
+				t.Fatalf("UnmarshalJSON(%s) error = %v", tt.json, err)
+			}
+
+			if !got.Time().Equal(tt.want) {
+				t.Fatalf("time = %s, want %s", got.Time().Format(time.RFC3339Nano), tt.want.Format(time.RFC3339Nano))
+			}
+		})
+	}
+}
+
+func TestFlexibleTimeTypesNullAndEmpty(t *testing.T) {
+	tests := []string{
+		`null`,
+		`""`,
+	}
+
+	for _, input := range tests {
+		t.Run(input, func(t *testing.T) {
+			var got Time
+			if err := json.Unmarshal([]byte(input), &got); err != nil {
+				t.Fatalf("UnmarshalJSON(%s) error = %v", input, err)
+			}
+			if !got.IsZero() {
+				t.Fatalf("time = %s, want zero", got.Time().Format(time.RFC3339Nano))
+			}
+		})
+	}
+}
+
+func TestFlexibleDateType(t *testing.T) {
+	var got Date
+	if err := json.Unmarshal([]byte(`"2026-04-25"`), &got); err != nil {
 		t.Fatal(err)
 	}
-	want := time.Date(2024, 4, 18, 0, 0, 0, 0, time.UTC)
-	if !got.Seconds.Time().Equal(want) || !got.Millis.Time().Equal(want) {
-		t.Fatalf("seconds=%v millis=%v want=%s", got.Seconds.Time(), got.Millis.Time(), want)
-	}
-	if got.Date.Time().Format("2006-01-02") != "2026-04-25" {
-		t.Fatalf("date = %s", got.Date.Time().Format("2006-01-02"))
+
+	want := time.Date(2026, 4, 25, 0, 0, 0, 0, time.UTC)
+	if !got.Time().Equal(want) {
+		t.Fatalf("date = %s, want %s", got.Time().Format("2006-01-02"), want.Format("2006-01-02"))
 	}
 }

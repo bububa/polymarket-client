@@ -305,15 +305,17 @@ var timeLayouts = []string{
 	"2006-01-02 15:04:05.999999999-07",
 	"2006-01-02 15:04:05-07",
 
-	// Optional variants, useful if API returns +0000 or +00:00
+	// Optional variants, useful if API returns +0000 or +00:00.
 	"2006-01-02 15:04:05.999999999-0700",
 	"2006-01-02 15:04:05-0700",
 	"2006-01-02 15:04:05.999999999-07:00",
 	"2006-01-02 15:04:05-07:00",
 
-	// No timezone fallback
+	// No-timezone fallbacks.
 	"2006-01-02 15:04:05.999999999",
 	"2006-01-02 15:04:05",
+	"2006-01-02T15:04:05.999999999",
+	"2006-01-02T15:04:05",
 }
 
 // ParseTime parses RFC3339, date-only, Unix seconds, or Unix milliseconds values.
