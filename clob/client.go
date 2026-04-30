@@ -351,7 +351,7 @@ func (c *Client) GetOrder(ctx context.Context, out *OpenOrder) error {
 // GetOpenOrders lists all open orders for the authenticated user.
 // Requires L2 auth.
 func (c *Client) GetOpenOrders(ctx context.Context, params OpenOrderParams) ([]OpenOrder, error) {
-	var out []OpenOrder
+	var out openOrdersResponse
 	return out, c.do(ctx, http.MethodGet, "/data/orders", values(params), nil, 2, &out)
 }
 

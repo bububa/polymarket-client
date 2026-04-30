@@ -62,7 +62,7 @@ type MarketSubscription struct {
 	// Markets optionally limits to specific condition IDs.
 	Markets []string `json:"markets,omitempty"`
 	// AssetIDs optionally limits to specific token IDs.
-	AssetIDs []string `json:"asset_ids,omitempty"`
+	AssetIDs []string `json:"assets_ids,omitempty"`
 	// InitialDump requests a full order book on subscribe.
 	InitialDump bool `json:"initial_dump,omitempty"`
 	// CustomFeatureEnabled enables extended features.
@@ -106,12 +106,20 @@ type PriceChangeEvent struct {
 	BaseEvent
 	// AssetID is the conditional token identifier.
 	AssetID string `json:"asset_id"`
+	// Market is the condition identifier.
+	Market string `json:"market"`
+	// BestBid is the highest bid price when included in price change messages.
+	BestBid string `json:"best_bid"`
+	// BestAsk is the lowest ask price when included in price change messages.
+	BestAsk string `json:"best_ask"`
 	// Price is the trade price.
 	Price string `json:"price"`
 	// Size is the trade quantity.
 	Size string `json:"size"`
 	// Side is the trade direction.
 	Side clob.Side `json:"side"`
+	// Timestamp is the event time.
+	Timestamp string `json:"timestamp"`
 }
 
 // TickSizeChangeEvent carries a tick size update notification.
@@ -237,7 +245,9 @@ type NewMarketEvent struct {
 	// Description is the market description.
 	Description string `json:"description"`
 	// AssetIDs lists the conditional token identifiers.
-	AssetIDs []string `json:"asset_ids"`
+	AssetIDs []string `json:"assets_ids"`
+	// AssetIDsAlt accepts the asset_ids variant sometimes emitted by CLOB.
+	AssetIDsAlt []string `json:"asset_ids,omitempty"`
 	// Outcomes lists the outcome labels.
 	Outcomes []string `json:"outcomes"`
 	// EventMessage is optional embedded event metadata.
@@ -260,7 +270,9 @@ type MarketResolvedEvent struct {
 	// Description is the market description.
 	Description string `json:"description,omitempty"`
 	// AssetIDs lists the conditional token identifiers.
-	AssetIDs []string `json:"asset_ids"`
+	AssetIDs []string `json:"assets_ids"`
+	// AssetIDsAlt accepts the asset_ids variant sometimes emitted by CLOB.
+	AssetIDsAlt []string `json:"asset_ids,omitempty"`
 	// Outcomes lists the outcome labels.
 	Outcomes []string `json:"outcomes,omitempty"`
 	// WinningAssetID is the resolved winning token ID.
@@ -350,5 +362,18 @@ func DecodeEvent(data []byte) (Event, error) {
 	default:
 		return nil, fmt.Errorf("unknown websocket event type %q", base.EventType)
 	}
-	return out, json.Unmarshal(data, out)
+	if err := json.Unmarshal(data, out); err != nil {
+		return nil, err
+	}
+	switch ev := out.(type) {
+	case *NewMarketEvent:
+		if len(ev.AssetIDs) == 0 && len(ev.AssetIDsAlt) > 0 {
+			ev.AssetIDs = ev.AssetIDsAlt
+		}
+	case *MarketResolvedEvent:
+		if len(ev.AssetIDs) == 0 && len(ev.AssetIDsAlt) > 0 {
+			ev.AssetIDs = ev.AssetIDsAlt
+		}
+	}
+	return out, nil
 }

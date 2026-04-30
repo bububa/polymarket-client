@@ -84,3 +84,42 @@ func TestCLOBAdditionalMarketDataEndpoints(t *testing.T) {
 		t.Fatalf("tick=%+v err=%v", tick, err)
 	}
 }
+
+func TestGetOpenOrdersAcceptsPagedAndArrayResponses(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{name: "data page", body: `{"data":[{"id":"order-1","market":"0xabc","asset_id":"123","price":"0.42"}],"next_cursor":"LTE="}`},
+		{name: "orders page", body: `{"orders":[{"id":"order-1","market":"0xabc","asset_id":"123","price":"0.42"}],"next_cursor":"LTE="}`},
+		{name: "array", body: `[{"id":"order-1","market":"0xabc","asset_id":"123","price":"0.42"}]`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodGet || r.URL.Path != "/data/orders" {
+					t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+				}
+				if r.URL.Query().Get("market") != "0xabc" {
+					t.Fatalf("market query = %s", r.URL.RawQuery)
+				}
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			defer srv.Close()
+
+			client := NewClient(srv.URL, WithSigner(testKey()), WithCredentials(Credentials{
+				Key:        "test-key",
+				Secret:     "c2VjcmV0",
+				Passphrase: "test-passphrase",
+			}))
+			got, err := client.GetOpenOrders(context.Background(), OpenOrderParams{Market: "0xabc"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(got) != 1 || got[0].ID != "order-1" || got[0].AssetID.String() != "123" {
+				t.Fatalf("unexpected orders: %+v", got)
+			}
+		})
+	}
+}

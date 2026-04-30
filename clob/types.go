@@ -1,5 +1,7 @@
 package clob
 
+import "encoding/json"
+
 const (
 	MainnetHost = "https://clob.polymarket.com"
 	V2Host      = "https://clob-v2.polymarket.com"
@@ -101,6 +103,30 @@ type Page[T any] struct {
 	NextCursor string `json:"next_cursor"`
 	// Data contains the page results.
 	Data []T `json:"data"`
+}
+
+type openOrdersResponse []OpenOrder
+
+func (r *openOrdersResponse) UnmarshalJSON(data []byte) error {
+	var orders []OpenOrder
+	if err := json.Unmarshal(data, &orders); err == nil {
+		*r = orders
+		return nil
+	}
+
+	var page struct {
+		Data   []OpenOrder `json:"data"`
+		Orders []OpenOrder `json:"orders"`
+	}
+	if err := json.Unmarshal(data, &page); err != nil {
+		return err
+	}
+	if page.Data != nil {
+		*r = page.Data
+		return nil
+	}
+	*r = page.Orders
+	return nil
 }
 
 // BookParams identifies a token/side combination for bulk price queries.

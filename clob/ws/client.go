@@ -138,7 +138,7 @@ func (c *Client) connect(ctx context.Context, url string) error {
 		}
 	}
 
-	go c.readLoop(ctx, conn)
+	go c.readLoop(c.ctx, conn)
 	c.replaySubscriptions(ctx)
 	return nil
 }
@@ -407,8 +407,8 @@ func (c *Client) scheduleReconnect(conn *websocket.Conn) {
 				return
 			case <-time.After(backoff):
 			}
-			ctx, cancel := context.WithTimeout(c.ctx, 15*time.Second)
-			err := c.connect(ctx, c.url.Load())
+			dialCtx, cancel := context.WithTimeout(c.ctx, 15*time.Second)
+			err := c.connect(dialCtx, c.url.Load())
 			cancel()
 			if err == nil {
 				return
@@ -466,6 +466,19 @@ func decodeEvents(data []byte) []decodedEvent {
 		for _, msg := range raw {
 			event, err := DecodeEvent(msg)
 			out = append(out, decodedEvent{event: event, err: err})
+		}
+		return out
+	}
+	var batch struct {
+		BaseEvent
+		PriceChanges []PriceChangeEvent `json:"price_changes"`
+	}
+	if err := json.Unmarshal(trimmed, &batch); err == nil && batch.EventType == EventTypePriceChange && len(batch.PriceChanges) > 0 {
+		out := make([]decodedEvent, 0, len(batch.PriceChanges))
+		for i := range batch.PriceChanges {
+			change := batch.PriceChanges[i]
+			change.BaseEvent = batch.BaseEvent
+			out = append(out, decodedEvent{event: &change})
 		}
 		return out
 	}

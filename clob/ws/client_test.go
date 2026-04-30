@@ -97,6 +97,67 @@ func TestUserSubscriptionRequiresCredentials(t *testing.T) {
 	}
 }
 
+func TestMarketSubscriptionUsesAssetsIDsWireField(t *testing.T) {
+	payload, err := json.Marshal(MarketSubscription{
+		Type:        ChannelMarket,
+		AssetIDs:    []string{"asset-1"},
+		InitialDump: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(payload, &raw); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := raw["assets_ids"]; !ok {
+		t.Fatalf("payload missing assets_ids: %s", payload)
+	}
+	if _, ok := raw["asset_ids"]; ok {
+		t.Fatalf("payload should not use asset_ids: %s", payload)
+	}
+}
+
+func TestDecodeNewMarketAcceptsAssetIDsVariant(t *testing.T) {
+	event, err := DecodeEvent([]byte(`{"event_type":"new_market","id":"m1","asset_ids":["asset-1"]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := event.(*NewMarketEvent)
+	if len(got.AssetIDs) != 1 || got.AssetIDs[0] != "asset-1" {
+		t.Fatalf("AssetIDs = %#v", got.AssetIDs)
+	}
+}
+
+func TestDecodeMarketResolvedAcceptsAssetIDsVariant(t *testing.T) {
+	event, err := DecodeEvent([]byte(`{"event_type":"market_resolved","id":"m1","asset_ids":["asset-1"],"winning_asset_id":"asset-1"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := event.(*MarketResolvedEvent)
+	if len(got.AssetIDs) != 1 || got.AssetIDs[0] != "asset-1" {
+		t.Fatalf("AssetIDs = %#v", got.AssetIDs)
+	}
+}
+
+func TestDecodePriceChangeBatch(t *testing.T) {
+	events := decodeEvents([]byte(`{"event_type":"price_change","price_changes":[{"asset_id":"asset-1","market":"0xabc","price":"0.42","size":"10","side":"BUY","best_bid":"0.41","best_ask":"0.43"},{"asset_id":"asset-2","price":"0.58","size":"20","side":"SELL"}],"timestamp":"1700000000000"}`))
+	if len(events) != 2 {
+		t.Fatalf("len(events) = %d, want 2", len(events))
+	}
+	first, ok := events[0].event.(*PriceChangeEvent)
+	if !ok {
+		t.Fatalf("event type = %T, want *PriceChangeEvent", events[0].event)
+	}
+	if first.AssetID != "asset-1" || first.Price != "0.42" || first.Size != "10" || first.Side != clob.Buy || first.BestBid != "0.41" || first.BestAsk != "0.43" {
+		t.Fatalf("unexpected first price change: %+v", first)
+	}
+	second := events[1].event.(*PriceChangeEvent)
+	if second.AssetID != "asset-2" || second.Price != "0.58" || second.Side != clob.Sell {
+		t.Fatalf("unexpected second price change: %+v", second)
+	}
+}
+
 func TestDecodeEventArrayError(t *testing.T) {
 	events := decodeEvents([]byte(`[{"event_type":"unknown"}]`))
 	if len(events) != 1 || events[0].err == nil {
