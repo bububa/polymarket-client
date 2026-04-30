@@ -26,6 +26,8 @@ type OpenOrderParams struct {
 	Market string `url:"market,omitempty"`
 	// AssetID filters by conditional token identifier.
 	AssetID string `url:"asset_id,omitempty"`
+	// NextCursor Cursor for pagination (base64 encoded offset)
+	NextCursor string `url:"next_cursor,omitempty" json:"next_cursor,omitempty"`
 }
 
 // PriceHistoryParams filters GET /prices-history requests.

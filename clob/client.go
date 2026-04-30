@@ -348,11 +348,31 @@ func (c *Client) GetOrder(ctx context.Context, out *OpenOrder) error {
 	return c.do(ctx, http.MethodGet, "/data/order/"+url.PathEscape(out.ID), nil, nil, 2, out)
 }
 
-// GetOpenOrders lists all open orders for the authenticated user.
+// GetOpenOrders returns open orders for the current page only.
+// Use GetOpenOrdersPage when you need next_cursor pagination metadata.
 // Requires L2 auth.
 func (c *Client) GetOpenOrders(ctx context.Context, params OpenOrderParams) ([]OpenOrder, error) {
+	page, err := c.GetOpenOrdersPage(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+	return page.Data, nil
+}
+
+// GetOpenOrdersPage returns open orders with next_cursor pagination metadata.
+// Requires L2 auth.
+func (c *Client) GetOpenOrdersPage(ctx context.Context, params OpenOrderParams) (*Page[OpenOrder], error) {
 	var out openOrdersResponse
-	return out, c.do(ctx, http.MethodGet, "/data/orders", values(params), nil, 2, &out)
+	if err := c.do(ctx, http.MethodGet, "/data/orders", values(params), nil, 2, &out); err != nil {
+		return nil, err
+	}
+
+	return &Page[OpenOrder]{
+		Data:       out.Orders,
+		Limit:      out.Limit,
+		Count:      out.Count,
+		NextCursor: out.NextCursor,
+	}, nil
 }
 
 // GetPreMigrationOrders lists open orders from before the CLOB v2 migration.
