@@ -125,6 +125,8 @@ func (r *openOrdersResponse) UnmarshalJSON(data []byte) error {
 	default:
 		r.Orders = nil
 	}
+	r.Limit = wrapped.Limit
+	r.Count = wrapped.Count
 	r.NextCursor = wrapped.NextCursor
 	return nil
 }

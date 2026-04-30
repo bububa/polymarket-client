@@ -144,7 +144,7 @@ func TestGetOpenOrdersAcceptsPagedAndArrayResponses(t *testing.T) {
 	}
 }
 
-func TestGetOpenOrdersPageDecodesNextCursor(t *testing.T) {
+func TestGetOpenOrdersPageDecodesPaginationMetadata(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.URL.Path != "/data/orders" {
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
@@ -157,6 +157,8 @@ func TestGetOpenOrdersPageDecodesNextCursor(t *testing.T) {
 			"data": [
 				{"id":"order-1","market":"0xabc","asset_id":"123","price":"0.42"}
 			],
+			"limit": 100,
+			"count": 1,
 			"next_cursor": "LTE="
 		}`))
 	}))
@@ -178,17 +180,112 @@ func TestGetOpenOrdersPageDecodesNextCursor(t *testing.T) {
 	if page == nil {
 		t.Fatal("page is nil")
 	}
+
+	if page.Limit != 100 {
+		t.Fatalf("Limit = %d, want 100", page.Limit)
+	}
+	if page.Count != 1 {
+		t.Fatalf("Count = %d, want 1", page.Count)
+	}
 	if page.NextCursor != "LTE=" {
 		t.Fatalf("NextCursor = %q, want %q", page.NextCursor, "LTE=")
 	}
+
 	if len(page.Data) != 1 {
 		t.Fatalf("len(page.Data) = %d, want 1", len(page.Data))
 	}
 	if page.Data[0].ID != "order-1" {
 		t.Fatalf("ID = %q, want %q", page.Data[0].ID, "order-1")
 	}
+	if page.Data[0].Market != "0xabc" {
+		t.Fatalf("Market = %q, want %q", page.Data[0].Market, "0xabc")
+	}
 	if page.Data[0].AssetID.String() != "123" {
 		t.Fatalf("AssetID = %q, want %q", page.Data[0].AssetID.String(), "123")
+	}
+	if page.Data[0].Price != 0.42 {
+		t.Fatalf("Price = %v, want %q", page.Data[0].Price, "0.42")
+	}
+}
+
+func TestGetOpenOrdersPageDecodesPaginationMetadataFromWrappedShapes(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "data wrapper",
+			body: `{
+				"data": [{"id":"order-1","market":"0xabc","asset_id":"123","price":"0.42"}],
+				"limit": 100,
+				"count": 1,
+				"next_cursor": "data-cursor"
+			}`,
+		},
+		{
+			name: "orders wrapper",
+			body: `{
+				"orders": [{"id":"order-1","market":"0xabc","asset_id":"123","price":"0.42"}],
+				"limit": 50,
+				"count": 1,
+				"next_cursor": "orders-cursor"
+			}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != http.MethodGet || r.URL.Path != "/data/orders" {
+					t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+				}
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			defer srv.Close()
+
+			client := NewClient(srv.URL,
+				WithSigner(testKey()),
+				WithCredentials(Credentials{
+					Key:        "test-key",
+					Secret:     "c2VjcmV0",
+					Passphrase: "test-passphrase",
+				}),
+			)
+
+			page, err := client.GetOpenOrdersPage(context.Background(), OpenOrderParams{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if page == nil {
+				t.Fatal("page is nil")
+			}
+			if len(page.Data) != 1 {
+				t.Fatalf("len(page.Data) = %d, want 1", len(page.Data))
+			}
+			if page.Count != 1 {
+				t.Fatalf("Count = %d, want 1", page.Count)
+			}
+			if page.NextCursor == "" {
+				t.Fatal("NextCursor is empty")
+			}
+
+			switch tt.name {
+			case "data wrapper":
+				if page.Limit != 100 {
+					t.Fatalf("Limit = %d, want 100", page.Limit)
+				}
+				if page.NextCursor != "data-cursor" {
+					t.Fatalf("NextCursor = %q, want data-cursor", page.NextCursor)
+				}
+			case "orders wrapper":
+				if page.Limit != 50 {
+					t.Fatalf("Limit = %d, want 50", page.Limit)
+				}
+				if page.NextCursor != "orders-cursor" {
+					t.Fatalf("NextCursor = %q, want orders-cursor", page.NextCursor)
+				}
+			}
+		})
 	}
 }
 
