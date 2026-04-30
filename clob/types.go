@@ -95,6 +95,8 @@ type apiKeysResponse struct {
 
 type openOrdersResponse struct {
 	Orders     []OpenOrder
+	Limit      Int
+	Count      Int
 	NextCursor string
 }
 
@@ -108,6 +110,8 @@ func (r *openOrdersResponse) UnmarshalJSON(data []byte) error {
 	var wrapped struct {
 		Data       []OpenOrder `json:"data"`
 		Orders     []OpenOrder `json:"orders"`
+		Limit      Int         `json:"limit"`
+		Count      Int         `json:"count"`
 		NextCursor string      `json:"next_cursor"`
 	}
 	if err := json.Unmarshal(data, &wrapped); err != nil {

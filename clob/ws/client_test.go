@@ -141,20 +141,104 @@ func TestDecodeMarketResolvedAcceptsAssetIDsVariant(t *testing.T) {
 }
 
 func TestDecodePriceChangeBatch(t *testing.T) {
-	events := decodeEvents([]byte(`{"event_type":"price_change","price_changes":[{"asset_id":"asset-1","market":"0xabc","price":"0.42","size":"10","side":"BUY","best_bid":"0.41","best_ask":"0.43"},{"asset_id":"asset-2","price":"0.58","size":"20","side":"SELL"}],"timestamp":"1700000000000"}`))
+	events := decodeEvents([]byte(`{
+		"event_type": "price_change",
+		"market": "0xabc",
+		"timestamp": "1700000000000",
+		"price_changes": [
+			{
+				"asset_id": "asset-1",
+				"price": "0.42",
+				"size": "10",
+				"side": "BUY",
+				"best_bid": "0.41",
+				"best_ask": "0.43"
+			},
+			{
+				"asset_id": "asset-2",
+				"price": "0.58",
+				"size": "20",
+				"side": "SELL"
+			}
+		]
+	}`))
 	if len(events) != 2 {
 		t.Fatalf("len(events) = %d, want 2", len(events))
 	}
+
 	first, ok := events[0].event.(*PriceChangeEvent)
 	if !ok {
 		t.Fatalf("event type = %T, want *PriceChangeEvent", events[0].event)
 	}
-	if first.AssetID != "asset-1" || first.Price != "0.42" || first.Size != "10" || first.Side != clob.Buy || first.BestBid != "0.41" || first.BestAsk != "0.43" {
+	if first.EventType != EventTypePriceChange {
+		t.Fatalf("first.EventType = %q, want %q", first.EventType, EventTypePriceChange)
+	}
+	if first.Market != "0xabc" {
+		t.Fatalf("first.Market = %q, want %q", first.Market, "0xabc")
+	}
+	if first.Timestamp != "1700000000000" {
+		t.Fatalf("first.Timestamp = %q, want %q", first.Timestamp, "1700000000000")
+	}
+	if first.AssetID != "asset-1" ||
+		first.Price != "0.42" ||
+		first.Size != "10" ||
+		first.Side != clob.Buy ||
+		first.BestBid != "0.41" ||
+		first.BestAsk != "0.43" {
 		t.Fatalf("unexpected first price change: %+v", first)
 	}
-	second := events[1].event.(*PriceChangeEvent)
-	if second.AssetID != "asset-2" || second.Price != "0.58" || second.Side != clob.Sell {
+
+	second, ok := events[1].event.(*PriceChangeEvent)
+	if !ok {
+		t.Fatalf("event type = %T, want *PriceChangeEvent", events[1].event)
+	}
+	if second.EventType != EventTypePriceChange {
+		t.Fatalf("second.EventType = %q, want %q", second.EventType, EventTypePriceChange)
+	}
+	if second.Market != "0xabc" {
+		t.Fatalf("second.Market = %q, want %q", second.Market, "0xabc")
+	}
+	if second.Timestamp != "1700000000000" {
+		t.Fatalf("second.Timestamp = %q, want %q", second.Timestamp, "1700000000000")
+	}
+	if second.AssetID != "asset-2" ||
+		second.Price != "0.58" ||
+		second.Size != "20" ||
+		second.Side != clob.Sell {
 		t.Fatalf("unexpected second price change: %+v", second)
+	}
+}
+
+func TestDecodePriceChangeBatchKeepsChildMarketAndTimestamp(t *testing.T) {
+	events := decodeEvents([]byte(`{
+		"event_type": "price_change",
+		"market": "0xbatch",
+		"timestamp": "1700000000000",
+		"price_changes": [
+			{
+				"asset_id": "asset-1",
+				"market": "0xchild",
+				"timestamp": "1700000000001",
+				"price": "0.42",
+				"size": "10",
+				"side": "BUY"
+			}
+		]
+	}`))
+	if len(events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(events))
+	}
+
+	got, ok := events[0].event.(*PriceChangeEvent)
+	if !ok {
+		t.Fatalf("event type = %T, want *PriceChangeEvent", events[0].event)
+	}
+
+	if got.Market != "0xchild" {
+		t.Fatalf("Market = %q, want %q", got.Market, "0xchild")
+	}
+	if got.Timestamp != "1700000000001" {
+		t.Fatalf("Timestamp = %q, want %q", got.Timestamp, "1700000000001")
 	}
 }
 

@@ -348,14 +348,18 @@ func (c *Client) GetOrder(ctx context.Context, out *OpenOrder) error {
 	return c.do(ctx, http.MethodGet, "/data/order/"+url.PathEscape(out.ID), nil, nil, 2, out)
 }
 
-// GetOpenOrders lists all open orders for the authenticated user.
+// GetOpenOrders returns open orders for the current page only.
+// Use GetOpenOrdersPage when you need next_cursor pagination metadata.
 // Requires L2 auth.
 func (c *Client) GetOpenOrders(ctx context.Context, params OpenOrderParams) ([]OpenOrder, error) {
-	var out openOrdersResponse
-	return out.Orders, c.do(ctx, http.MethodGet, "/data/orders", values(params), nil, 2, &out)
+	page, err := c.GetOpenOrdersPage(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+	return page.Data, nil
 }
 
-// GetOpenOrdersPage when you need next_cursor pagination metadata
+// GetOpenOrdersPage returns open orders with next_cursor pagination metadata.
 // Requires L2 auth.
 func (c *Client) GetOpenOrdersPage(ctx context.Context, params OpenOrderParams) (*Page[OpenOrder], error) {
 	var out openOrdersResponse
@@ -365,6 +369,8 @@ func (c *Client) GetOpenOrdersPage(ctx context.Context, params OpenOrderParams) 
 
 	return &Page[OpenOrder]{
 		Data:       out.Orders,
+		Limit:      out.Limit,
+		Count:      out.Count,
 		NextCursor: out.NextCursor,
 	}, nil
 }
