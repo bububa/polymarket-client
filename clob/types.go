@@ -93,39 +93,35 @@ type apiKeysResponse struct {
 	APIKeys []Credentials `json:"apiKeys"`
 }
 
-// Page wraps a paginated CLOB API response.
-type Page[T any] struct {
-	// Limit is the requested page size.
-	Limit Int `json:"limit"`
-	// Count is the number of results on this page.
-	Count Int `json:"count"`
-	// NextCursor is the pagination cursor for the next page, empty when exhausted.
-	NextCursor string `json:"next_cursor"`
-	// Data contains the page results.
-	Data []T `json:"data"`
+type openOrdersResponse struct {
+	Orders     []OpenOrder
+	NextCursor string
 }
 
-type openOrdersResponse []OpenOrder
-
 func (r *openOrdersResponse) UnmarshalJSON(data []byte) error {
-	var orders []OpenOrder
-	if err := json.Unmarshal(data, &orders); err == nil {
-		*r = orders
+	var raw []OpenOrder
+	if err := json.Unmarshal(data, &raw); err == nil {
+		r.Orders = raw
 		return nil
 	}
 
-	var page struct {
-		Data   []OpenOrder `json:"data"`
-		Orders []OpenOrder `json:"orders"`
+	var wrapped struct {
+		Data       []OpenOrder `json:"data"`
+		Orders     []OpenOrder `json:"orders"`
+		NextCursor string      `json:"next_cursor"`
 	}
-	if err := json.Unmarshal(data, &page); err != nil {
+	if err := json.Unmarshal(data, &wrapped); err != nil {
 		return err
 	}
-	if page.Data != nil {
-		*r = page.Data
-		return nil
+	switch {
+	case wrapped.Data != nil:
+		r.Orders = wrapped.Data
+	case wrapped.Orders != nil:
+		r.Orders = wrapped.Orders
+	default:
+		r.Orders = nil
 	}
-	*r = page.Orders
+	r.NextCursor = wrapped.NextCursor
 	return nil
 }
 

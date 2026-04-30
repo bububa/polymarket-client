@@ -471,13 +471,27 @@ func decodeEvents(data []byte) []decodedEvent {
 	}
 	var batch struct {
 		BaseEvent
+		Market       string             `json:"market"`
+		Timestamp    string             `json:"timestamp"`
 		PriceChanges []PriceChangeEvent `json:"price_changes"`
 	}
-	if err := json.Unmarshal(trimmed, &batch); err == nil && batch.EventType == EventTypePriceChange && len(batch.PriceChanges) > 0 {
+
+	if err := json.Unmarshal(trimmed, &batch); err == nil &&
+		batch.EventType == EventTypePriceChange &&
+		len(batch.PriceChanges) > 0 {
+
 		out := make([]decodedEvent, 0, len(batch.PriceChanges))
 		for i := range batch.PriceChanges {
 			change := batch.PriceChanges[i]
 			change.BaseEvent = batch.BaseEvent
+
+			if change.Market == "" {
+				change.Market = batch.Market
+			}
+			if change.Timestamp == "" {
+				change.Timestamp = batch.Timestamp
+			}
+
 			out = append(out, decodedEvent{event: &change})
 		}
 		return out
