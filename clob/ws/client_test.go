@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/bububa/polymarket-client/clob"
+	"github.com/bububa/polymarket-client/shared"
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 )
@@ -37,7 +38,7 @@ func TestClientSubscribesAndDecodesEvents(t *testing.T) {
 			AssetID:   "asset-1",
 			Bids:      []clob.OrderSummary{{Price: clob.Float64(0.45), Size: clob.Float64(10)}},
 			Asks:      []clob.OrderSummary{{Price: clob.Float64(0.55), Size: clob.Float64(20)}},
-			Timestamp: "1700000000000",
+			Timestamp: shared.TimeFromUnixMilli(1700000000000),
 		}
 		if err := wsjson.Write(ctx, conn, []BookEvent{event}); err != nil {
 			t.Errorf("write event: %v", err)
@@ -176,15 +177,15 @@ func TestDecodePriceChangeBatch(t *testing.T) {
 	if first.Market != "0xabc" {
 		t.Fatalf("first.Market = %q, want %q", first.Market, "0xabc")
 	}
-	if first.Timestamp != "1700000000000" {
-		t.Fatalf("first.Timestamp = %q, want %q", first.Timestamp, "1700000000000")
+	if first.Timestamp.Time().UnixMilli() != 1700000000000 {
+		t.Fatalf("first.Timestamp = %v, want %q", first.Timestamp, "1700000000000")
 	}
 	if first.AssetID != "asset-1" ||
-		first.Price != "0.42" ||
-		first.Size != "10" ||
+		first.Price != 0.42 ||
+		first.Size != 10 ||
 		first.Side != clob.Buy ||
-		first.BestBid != "0.41" ||
-		first.BestAsk != "0.43" {
+		first.BestBid != 0.41 ||
+		first.BestAsk != 0.43 {
 		t.Fatalf("unexpected first price change: %+v", first)
 	}
 
@@ -198,12 +199,12 @@ func TestDecodePriceChangeBatch(t *testing.T) {
 	if second.Market != "0xabc" {
 		t.Fatalf("second.Market = %q, want %q", second.Market, "0xabc")
 	}
-	if second.Timestamp != "1700000000000" {
-		t.Fatalf("second.Timestamp = %q, want %q", second.Timestamp, "1700000000000")
+	if second.Timestamp.Time().UnixMilli() != 1700000000000 {
+		t.Fatalf("second.Timestamp = %v, want %q", second.Timestamp, "1700000000000")
 	}
 	if second.AssetID != "asset-2" ||
-		second.Price != "0.58" ||
-		second.Size != "20" ||
+		second.Price != 0.58 ||
+		second.Size != 20 ||
 		second.Side != clob.Sell {
 		t.Fatalf("unexpected second price change: %+v", second)
 	}
@@ -237,8 +238,8 @@ func TestDecodePriceChangeBatchKeepsChildMarketAndTimestamp(t *testing.T) {
 	if got.Market != "0xchild" {
 		t.Fatalf("Market = %q, want %q", got.Market, "0xchild")
 	}
-	if got.Timestamp != "1700000000001" {
-		t.Fatalf("Timestamp = %q, want %q", got.Timestamp, "1700000000001")
+	if got.Timestamp.Time().UnixMilli() != 1700000000001 {
+		t.Fatalf("Timestamp = %v, want %q", got.Timestamp, "1700000000001")
 	}
 }
 

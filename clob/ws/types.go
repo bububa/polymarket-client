@@ -93,33 +93,50 @@ type BookEvent struct {
 	BaseEvent
 	// AssetID is the conditional token identifier.
 	AssetID string `json:"asset_id"`
+	// Market Condition ID of the market
+	Market string `json:"market"`
 	// Bids are buy order levels.
 	Bids []clob.OrderSummary `json:"bids"`
 	// Asks are sell order levels.
 	Asks []clob.OrderSummary `json:"asks"`
 	// Timestamp is the event time.
-	Timestamp string `json:"timestamp"`
+	Timestamp clob.Time `json:"timestamp"`
+	// Hash of the orderbook content
+	Hash string `json:"hash"`
+}
+
+// PriceChangeBatchEvent carries batch trade price update.
+type PriceChangeBatchEvent struct {
+	BaseEvent
+	// Market is the condition identifier.
+	Market string `json:"market"`
+	// Timestamp is the event time.
+	Timestamp clob.Time `json:"timestamp"`
+	// PriceChanges
+	PriceChanges []PriceChangeEvent `json:"price_changes"`
 }
 
 // PriceChangeEvent carries a single trade price update.
 type PriceChangeEvent struct {
 	BaseEvent
-	// AssetID is the conditional token identifier.
-	AssetID string `json:"asset_id"`
 	// Market is the condition identifier.
 	Market string `json:"market"`
+	// Timestamp is the event time.
+	Timestamp clob.Time `json:"timestamp"`
+	// AssetID is the conditional token identifier.
+	AssetID string `json:"asset_id"`
 	// BestBid is the highest bid price when included in price change messages.
-	BestBid string `json:"best_bid"`
+	BestBid clob.Float64 `json:"best_bid"`
 	// BestAsk is the lowest ask price when included in price change messages.
-	BestAsk string `json:"best_ask"`
+	BestAsk clob.Float64 `json:"best_ask"`
 	// Price is the trade price.
-	Price string `json:"price"`
+	Price clob.Float64 `json:"price"`
 	// Size is the trade quantity.
-	Size string `json:"size"`
+	Size clob.Float64 `json:"size"`
 	// Side is the trade direction.
 	Side clob.Side `json:"side"`
-	// Timestamp is the event time.
-	Timestamp string `json:"timestamp"`
+	// Hash of the orderbook content
+	Hash string `json:"hash"`
 }
 
 // TickSizeChangeEvent carries a tick size update notification.
@@ -134,7 +151,7 @@ type TickSizeChangeEvent struct {
 	// NewTickSize is the updated tick size.
 	NewTickSize clob.TickSize `json:"new_tick_size"`
 	// Timestamp is the event time.
-	Timestamp string `json:"timestamp"`
+	Timestamp clob.Time `json:"timestamp"`
 }
 
 // LastTradePriceEvent carries the most recent trade price.
@@ -145,15 +162,17 @@ type LastTradePriceEvent struct {
 	// Market is the condition ID.
 	Market string `json:"market"`
 	// Price is the trade price.
-	Price string `json:"price"`
+	Price clob.Float64 `json:"price"`
 	// Size is the trade quantity.
-	Size string `json:"size"`
+	Size clob.Float64 `json:"size"`
 	// Side is the trade direction.
 	Side clob.Side `json:"side"`
 	// FeeRateBps is the fee rate in basis points.
-	FeeRateBps string `json:"fee_rate_bps"`
+	FeeRateBps clob.Float64 `json:"fee_rate_bps"`
 	// Timestamp is the event time.
-	Timestamp string `json:"timestamp"`
+	Timestamp clob.Time `json:"timestamp"`
+	// TransactionHash transaction_hash
+	TransactionHash string `json:"transaction_hash"`
 }
 
 // OrderEvent carries an order status change (fill, cancel, expiry).
@@ -166,9 +185,9 @@ type OrderEvent struct {
 	// Market is the condition ID.
 	Market string `json:"market"`
 	// Price is the order price.
-	Price string `json:"price"`
+	Price clob.Float64 `json:"price"`
 	// Size is the order quantity.
-	Size string `json:"size"`
+	Size clob.Float64 `json:"size"`
 	// Side is the order direction.
 	Side clob.Side `json:"side"`
 	// Status is the updated order status.
@@ -176,7 +195,7 @@ type OrderEvent struct {
 	// Reason explains why the order changed state.
 	Reason string `json:"reason,omitempty"`
 	// Timestamp is the event time.
-	Timestamp string `json:"timestamp"`
+	Timestamp clob.Time `json:"timestamp"`
 }
 
 // TradeEvent carries a matched trade notification.
@@ -189,15 +208,15 @@ type TradeEvent struct {
 	// Market is the condition ID.
 	Market string `json:"market"`
 	// Price is the execution price.
-	Price string `json:"price"`
+	Price clob.Float64 `json:"price"`
 	// Size is the matched quantity.
-	Size string `json:"size"`
+	Size clob.Float64 `json:"size"`
 	// Side is the trade direction.
 	Side clob.Side `json:"side"`
 	// Status is the trade processing status.
 	Status TradeStatus `json:"status"`
 	// Timestamp is the event time.
-	Timestamp string `json:"timestamp"`
+	Timestamp clob.Time `json:"timestamp"`
 }
 
 // BestBidAskEvent carries top-of-book bid/ask update.
@@ -208,13 +227,13 @@ type BestBidAskEvent struct {
 	// AssetID is the conditional token identifier.
 	AssetID string `json:"asset_id"`
 	// BestBid is the highest bid price.
-	BestBid string `json:"best_bid"`
+	BestBid clob.Float64 `json:"best_bid"`
 	// BestAsk is the lowest ask price.
-	BestAsk string `json:"best_ask"`
+	BestAsk clob.Float64 `json:"best_ask"`
 	// Spread is the difference.
-	Spread string `json:"spread"`
+	Spread clob.Float64 `json:"spread"`
 	// Timestamp is the event time.
-	Timestamp string `json:"timestamp"`
+	Timestamp clob.Time `json:"timestamp"`
 }
 
 // EventMessage is the embedded sports event metadata.
@@ -253,7 +272,16 @@ type NewMarketEvent struct {
 	// EventMessage is optional embedded event metadata.
 	EventMessage *EventMessage `json:"event_message,omitempty"`
 	// Timestamp is the event time.
-	Timestamp string `json:"timestamp"`
+	Timestamp             clob.Time     `json:"timestamp"`
+	Tags                  []string      `json:"tags,omitempty"`
+	ConditionID           string        `json:"condition_id,omitempty"`
+	Active                *bool         `json:"active,omitempty"`
+	CLOBTokenIDs          []string      `json:"clob_token_ids,omitempty"`
+	SportsMarketType      string        `json:"sports_market_type,omitempty"`
+	Line                  string        `json:"line,omitempty"`
+	GameStartTime         clob.Time     `json:"game_start_time,omitzero"` // 如果可能为空字符串，可能要用 string 更稳
+	OrderPriceMinTickSize clob.TickSize `json:"order_price_min_tick_size,omitempty"`
+	GroupItemTitle        string        `json:"group_item_title,omitempty"`
 }
 
 // MarketResolvedEvent signals a market has been resolved.
@@ -282,7 +310,8 @@ type MarketResolvedEvent struct {
 	// EventMessage is optional embedded event metadata.
 	EventMessage *EventMessage `json:"event_message,omitempty"`
 	// Timestamp is the event time.
-	Timestamp string `json:"timestamp"`
+	Timestamp clob.Time `json:"timestamp"`
+	Tags      []string  `json:"tags,omitempty"`
 }
 
 // OrderStatus identifies the lifecycle state of an order.

@@ -219,6 +219,10 @@ func parseInt64JSON(data []byte) (int64, error) {
 // Time accepts RFC3339 strings, date-only strings, Unix seconds, Unix milliseconds, and numeric strings.
 type Time time.Time
 
+func TimeFromUnixMilli(v int64) Time {
+	return Time(time.UnixMilli(v))
+}
+
 func (t *Time) UnmarshalJSON(data []byte) error {
 	data = bytes.TrimSpace(data)
 	if len(data) == 0 || bytes.Equal(data, []byte("null")) || bytes.Equal(data, []byte(`""`)) {

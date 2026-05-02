@@ -9,10 +9,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bububa/polymarket-client/clob"
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 	"go.uber.org/atomic"
+
+	"github.com/bububa/polymarket-client/clob"
 )
 
 const (
@@ -469,13 +470,7 @@ func decodeEvents(data []byte) []decodedEvent {
 		}
 		return out
 	}
-	var batch struct {
-		BaseEvent
-		Market       string             `json:"market"`
-		Timestamp    string             `json:"timestamp"`
-		PriceChanges []PriceChangeEvent `json:"price_changes"`
-	}
-
+	var batch PriceChangeBatchEvent
 	if err := json.Unmarshal(trimmed, &batch); err == nil &&
 		batch.EventType == EventTypePriceChange &&
 		len(batch.PriceChanges) > 0 {
@@ -488,7 +483,7 @@ func decodeEvents(data []byte) []decodedEvent {
 			if change.Market == "" {
 				change.Market = batch.Market
 			}
-			if change.Timestamp == "" {
+			if change.Timestamp.IsZero() {
 				change.Timestamp = batch.Timestamp
 			}
 
