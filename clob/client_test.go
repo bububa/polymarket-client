@@ -328,3 +328,179 @@ func TestGetOpenOrdersPageSendsNextCursor(t *testing.T) {
 		t.Fatalf("len(page.Data) = %d, want 0", len(page.Data))
 	}
 }
+
+func TestBuildOrder_UsesDefaultSignatureType(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/data/orders" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+		if r.URL.Query().Get("market") != "0xabc" {
+			t.Fatalf("market query = %s", r.URL.RawQuery)
+		}
+		if r.URL.Query().Get("next_cursor") != "LTE=" {
+			t.Fatalf("next_cursor query = %q, want %q", r.URL.Query().Get("next_cursor"), "LTE=")
+		}
+
+		_, _ = w.Write([]byte(`{"data":[]}`))
+	}))
+	defer srv.Close()
+	client := NewClient(srv.URL,
+		WithSigner(testKey()),
+		WithCredentials(Credentials{
+			Key:        "test-key",
+			Secret:     "c2VjcmV0",
+			Passphrase: "test-passphrase",
+		}),
+		WithDefaultSignatureType(SignatureTypeProxy),
+	)
+	builder := NewOrderBuilder(client)
+
+	order, err := builder.BuildOrder(OrderArgsV2{
+		TokenID: "123",
+		Price:   "0.50",
+		Size:    "10",
+		Side:    Buy,
+		// SignatureType intentionally nil.
+	}, CreateOrderOptions{
+		TickSize: "0.01",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if order.SignatureType != SignatureTypeProxy {
+		t.Fatalf("SignatureType = %d, want %d", order.SignatureType, SignatureTypeProxy)
+	}
+}
+
+func TestBuildOrder_ExplicitSignatureTypeOverridesDefault(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/data/orders" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+		if r.URL.Query().Get("market") != "0xabc" {
+			t.Fatalf("market query = %s", r.URL.RawQuery)
+		}
+		if r.URL.Query().Get("next_cursor") != "LTE=" {
+			t.Fatalf("next_cursor query = %q, want %q", r.URL.Query().Get("next_cursor"), "LTE=")
+		}
+
+		_, _ = w.Write([]byte(`{"data":[]}`))
+	}))
+	defer srv.Close()
+	client := NewClient(srv.URL,
+		WithSigner(testKey()),
+		WithCredentials(Credentials{
+			Key:        "test-key",
+			Secret:     "c2VjcmV0",
+			Passphrase: "test-passphrase",
+		}),
+		WithDefaultSignatureType(SignatureTypeProxy),
+	)
+	builder := NewOrderBuilder(client)
+
+	order, err := builder.BuildOrder(OrderArgsV2{
+		TokenID:       "123",
+		Price:         "0.50",
+		Size:          "10",
+		Side:          Buy,
+		SignatureType: new(SignatureTypeEOA),
+	}, CreateOrderOptions{
+		TickSize: "0.01",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if order.SignatureType != SignatureTypeEOA {
+		t.Fatalf("SignatureType = %d, want %d", order.SignatureType, SignatureTypeEOA)
+	}
+}
+
+func TestBuildMarketOrder_UsesDefaultSignatureType(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/data/orders" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+		if r.URL.Query().Get("market") != "0xabc" {
+			t.Fatalf("market query = %s", r.URL.RawQuery)
+		}
+		if r.URL.Query().Get("next_cursor") != "LTE=" {
+			t.Fatalf("next_cursor query = %q, want %q", r.URL.Query().Get("next_cursor"), "LTE=")
+		}
+
+		_, _ = w.Write([]byte(`{"data":[]}`))
+	}))
+	defer srv.Close()
+	client := NewClient(srv.URL,
+		WithSigner(testKey()),
+		WithCredentials(Credentials{
+			Key:        "test-key",
+			Secret:     "c2VjcmV0",
+			Passphrase: "test-passphrase",
+		}),
+		WithDefaultSignatureType(SignatureTypeProxy),
+	)
+	builder := NewOrderBuilder(client)
+
+	order, err := builder.BuildMarketOrder(MarketOrderArgsV2{
+		TokenID: "123",
+		Price:   "0.50",
+		Amount:  "100",
+		Side:    Buy,
+		// SignatureType intentionally nil.
+	}, CreateOrderOptions{
+		TickSize: "0.01",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if order.SignatureType != SignatureTypeProxy {
+		t.Fatalf("SignatureType = %d, want %d", order.SignatureType, SignatureTypeProxy)
+	}
+}
+
+func TestBuildMarketOrder_ExplicitSignatureTypeOverridesDefault(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/data/orders" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+		if r.URL.Query().Get("market") != "0xabc" {
+			t.Fatalf("market query = %s", r.URL.RawQuery)
+		}
+		if r.URL.Query().Get("next_cursor") != "LTE=" {
+			t.Fatalf("next_cursor query = %q, want %q", r.URL.Query().Get("next_cursor"), "LTE=")
+		}
+
+		_, _ = w.Write([]byte(`{"data":[]}`))
+	}))
+	defer srv.Close()
+	client := NewClient(srv.URL,
+		WithSigner(testKey()),
+		WithCredentials(Credentials{
+			Key:        "test-key",
+			Secret:     "c2VjcmV0",
+			Passphrase: "test-passphrase",
+		}),
+		WithDefaultSignatureType(SignatureTypeProxy),
+	)
+	builder := NewOrderBuilder(client)
+
+	order, err := builder.BuildMarketOrder(MarketOrderArgsV2{
+		TokenID:       "123",
+		Price:         "0.50",
+		Amount:        "100",
+		Side:          Buy,
+		SignatureType: new(SignatureTypeEOA),
+	}, CreateOrderOptions{
+		TickSize: "0.01",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if order.SignatureType != SignatureTypeEOA {
+		t.Fatalf("SignatureType = %d, want %d", order.SignatureType, SignatureTypeEOA)
+	}
+}

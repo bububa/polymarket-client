@@ -14,7 +14,7 @@ type OrderArgsV2 struct {
 	Size          string
 	Side          Side
 	Expiration    string
-	SignatureType SignatureType
+	SignatureType *SignatureType
 
 	// Maker is the funder/proxy/safe wallet address that owns the order.
 	// If empty, SignOrder defaults maker to the signer address.
@@ -37,7 +37,7 @@ type MarketOrderArgsV2 struct {
 	TokenID       string
 	Amount        string // BUY: USDC (pUSD) to spend, SELL: shares to sell
 	Side          Side
-	SignatureType SignatureType
+	SignatureType *SignatureType
 
 	// Maker is the funder/proxy/safe wallet address that owns the order.
 	// If empty, SignOrder defaults maker to the signer address.
@@ -90,7 +90,7 @@ func (b *OrderBuilder) BuildOrder(args OrderArgsV2, opts CreateOrderOptions) (*S
 		MakerAmount:   String(makerAmount),
 		TakerAmount:   String(takerAmount),
 		Side:          args.Side,
-		SignatureType: args.SignatureType,
+		SignatureType: b.client.ResolveSignatureType(args.SignatureType),
 		Maker:         args.Maker,
 		Builder:       args.BuilderCode,
 		Metadata:      args.Metadata,
@@ -125,7 +125,7 @@ func (b *OrderBuilder) BuildMarketOrder(args MarketOrderArgsV2, opts CreateOrder
 		MakerAmount:   String(makerAmount),
 		TakerAmount:   String(takerAmount),
 		Side:          args.Side,
-		SignatureType: args.SignatureType,
+		SignatureType: b.client.ResolveSignatureType(args.SignatureType),
 		Maker:         args.Maker,
 		Expiration:    String("0"),
 		Builder:       args.BuilderCode,
