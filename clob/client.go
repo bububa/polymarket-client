@@ -20,13 +20,14 @@ import (
 var errMissingIdentifier = errors.New("polymarket: missing identifier on output value")
 
 type Client struct {
-	host          string
-	geoblock      string
-	rpcURL        string
-	httpClient    *http.Client
-	auth          Auth
-	userAgent     string
-	relayerClient RelayerSubmitter
+	host                 string
+	geoblock             string
+	rpcURL               string
+	httpClient           *http.Client
+	auth                 Auth
+	userAgent            string
+	relayerClient        RelayerSubmitter
+	defaultSignatureType *SignatureType
 }
 
 // RelayerSubmitter is the relayer capability used by CLOB CTF helpers.
@@ -84,6 +85,12 @@ func WithRelayerSubmitter(submitter RelayerSubmitter) Option {
 // WithRelayerClient sets the Polymarket Relayer API client used by CTF helpers.
 func WithRelayerClient(client *relayer.Client) Option {
 	return WithRelayerSubmitter(client)
+}
+
+func WithDefaultSignatureType(signatureType SignatureType) Option {
+	return func(c *Client) {
+		c.defaultSignatureType = &signatureType
+	}
 }
 
 // NewClient creates a CLOB client for host.
@@ -762,6 +769,16 @@ func (c *Client) addAuthHeaders(ctx context.Context, req *http.Request, method, 
 		req.Header.Set(key, value)
 	}
 	return nil
+}
+
+func (c *Client) ResolveSignatureType(signatureType *SignatureType) SignatureType {
+	if signatureType != nil {
+		return *signatureType
+	}
+	if c != nil && c.defaultSignatureType != nil {
+		return *c.defaultSignatureType
+	}
+	return SignatureTypeEOA
 }
 
 func values(v any) url.Values {

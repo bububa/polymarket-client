@@ -315,7 +315,7 @@ func TestCreateAndPostOrder_WithServer(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(PostOrderResponse{Success: true, OrderID: "order-123"})
+		_ = json.NewEncoder(w).Encode(PostOrderResponse{Success: true, OrderID: "order-123"}) //nolint:errcheck
 	}))
 	defer srv.Close()
 
@@ -352,7 +352,7 @@ func TestCreateAndPostMarketOrder_FOK(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(PostOrderResponse{Success: true, OrderID: "mkt-456"})
+		_ = json.NewEncoder(w).Encode(PostOrderResponse{Success: true, OrderID: "mkt-456"}) //nolint:errcheck
 	}))
 	defer srv.Close()
 
@@ -469,7 +469,7 @@ func TestComputeMarketOrderAmounts_CeilProtectsWorstPrice_BUY(t *testing.T) {
 	}
 	// implied price = makerAmount / takerAmount should be <= worstPrice
 	// floor takerAmount would give implied price > worstPrice
-	takerVal, err := strconv.ParseInt(taker, 10, 64)
+	takerVal, _ := strconv.ParseInt(taker, 10, 64)
 	makerVal, _ := strconv.ParseInt(maker, 10, 64)
 	if takerVal == 0 {
 		t.Fatal("taker is zero")
@@ -486,7 +486,7 @@ func TestComputeMarketOrderAmounts_CeilProtectsWorstPrice_SELL(t *testing.T) {
 		t.Fatal(err)
 	}
 	makerVal, _ := strconv.ParseInt(maker, 10, 64)
-	takerVal, err := strconv.ParseInt(taker, 10, 64)
+	takerVal, _ := strconv.ParseInt(taker, 10, 64)
 	if takerVal == 0 {
 		t.Fatal("taker is zero")
 	}
@@ -525,7 +525,7 @@ func TestBuildOrder_WithMakerUsesFunderAsMaker(t *testing.T) {
 		Price:         "0.50",
 		Size:          "10",
 		Side:          Buy,
-		SignatureType: SignatureTypeProxy,
+		SignatureType: new(SignatureTypeProxy),
 		Maker:         funder,
 	}, CreateOrderOptions{TickSize: "0.01"})
 
@@ -544,7 +544,7 @@ func TestBuildOrder_EmptyMakerDefaultsToSigner(t *testing.T) {
 		Price:         "0.50",
 		Size:          "10",
 		Side:          Buy,
-		SignatureType: SignatureTypeEOA,
+		SignatureType: new(SignatureTypeEOA),
 	}, CreateOrderOptions{TickSize: "0.01"})
 
 	require.NoError(t, err)
@@ -563,7 +563,7 @@ func TestBuildMarketOrder_WithMakerUsesFunderAsMaker(t *testing.T) {
 		Price:         "0.50",
 		Amount:        "100",
 		Side:          Buy,
-		SignatureType: SignatureTypeProxy,
+		SignatureType: new(SignatureTypeProxy),
 		Maker:         funder,
 	}, CreateOrderOptions{TickSize: "0.01"})
 
