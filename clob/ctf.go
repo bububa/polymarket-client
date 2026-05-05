@@ -8,13 +8,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bububa/polymarket-client/relayer"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
+
+	"github.com/bububa/polymarket-client/relayer"
 )
 
 // BuildSplitPositionTx writes the destination and calldata for splitPosition into out.
@@ -113,6 +114,12 @@ func (c *Client) RedeemNegRisk(ctx context.Context, req *RedeemNegRiskRequest, o
 func (c *Client) SubmitCTFRelayerTransaction(ctx context.Context, tx *CTFTransaction, req *RelayerCTFRequest, out *relayer.SubmitTransactionResponse) error {
 	if tx == nil {
 		return errors.New("polymarket: nil CTF transaction")
+	}
+	if strings.TrimSpace(req.ProxyWallet) == "" {
+		return errors.New("polymarket: proxy wallet is required")
+	}
+	if !common.IsHexAddress(req.ProxyWallet) {
+		return fmt.Errorf("polymarket: proxy wallet must be a valid hex address")
 	}
 	to := strings.TrimSpace(req.To)
 	if to == "" {
@@ -367,11 +374,6 @@ func (c *Client) BuildCTFRelayerRequest(
 		return errors.New("polymarket: relayer client is required")
 	}
 
-	builder, ok := c.relayerClient.(ProxyRelayerBuilder)
-	if !ok {
-		return errors.New("polymarket: relayer client does not support proxy request signing")
-	}
-
 	from := strings.TrimSpace(req.From)
 	if from == "" {
 		from = c.auth.Signer.Address().Hex()
@@ -380,26 +382,58 @@ func (c *Client) BuildCTFRelayerRequest(
 		return fmt.Errorf("polymarket: relayer from must be a valid hex address")
 	}
 
-	encodedData, err := relayer.EncodeProxyTransactionData([]relayer.ProxyTransaction{
-		{
-			To:       tx.To.Hex(),
-			TypeCode: relayer.CallTypeCall,
-			Data:     hexutil.Encode(tx.Data),
-			Value:    "0",
-		},
-	})
-	if err != nil {
-		return err
-	}
-
 	var submit relayer.SubmitTransactionRequest
-	if err := builder.ProxySubmitTransactionRequest(ctx, c.auth.Signer, &relayer.ProxySubmitTransactionArgs{
-		From:     from,
-		Data:     encodedData,
-		Metadata: req.Metadata,
-		GasLimit: req.GasLimit,
-	}, &submit); err != nil {
-		return err
+	switch req.Type {
+	case relayer.NonceTypeSafe:
+		builder, ok := c.relayerClient.(SafeRelayerBuilder)
+		if !ok {
+			return errors.New("polymarket: relayer client does not support safe request signing")
+		}
+		err := builder.SafeSubmitTransactionRequest(ctx, c.auth.Signer, &relayer.SafeSubmitTransactionArgs{
+			From:        from,
+			ProxyWallet: req.ProxyWallet,
+			ChainID:     c.auth.ChainID,
+			Transactions: []relayer.SafeTransaction{
+				{
+					To:        tx.To.Hex(),
+					Operation: relayer.OperationCall,
+					Data:      hexutil.Encode(tx.Data),
+					Value:     "0",
+				},
+			},
+			Metadata: req.Metadata,
+		}, &submit)
+		if err != nil {
+			return err
+		}
+	case relayer.NonceTypeProxy:
+		builder, ok := c.relayerClient.(ProxyRelayerBuilder)
+		if !ok {
+			return errors.New("polymarket: relayer client does not support proxy request signing")
+		}
+		encodedData, err := relayer.EncodeProxyTransactionData([]relayer.ProxyTransaction{
+			{
+				To:       tx.To.Hex(),
+				TypeCode: relayer.CallTypeCall,
+				Data:     hexutil.Encode(tx.Data),
+				Value:    "0",
+			},
+		})
+		if err != nil {
+			return err
+		}
+		err = builder.ProxySubmitTransactionRequest(ctx, c.auth.Signer, &relayer.ProxySubmitTransactionArgs{
+			From:        from,
+			ProxyWallet: req.ProxyWallet,
+			Data:        encodedData,
+			Metadata:    req.Metadata,
+			GasLimit:    req.GasLimit,
+		}, &submit)
+		if err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("polymarket: unsupported relayer type %q", req.Type)
 	}
 
 	*out = RelayerCTFRequest{

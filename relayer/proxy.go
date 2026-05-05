@@ -134,6 +134,15 @@ func (c *Client) BuildProxySubmitTransactionRequest(
 	}
 	from = common.HexToAddress(from).Hex()
 
+	proxyWallet := strings.TrimSpace(req.ProxyWallet)
+	if proxyWallet == "" {
+		return errors.New("relayer: proxy wallet is required")
+	}
+	if !common.IsHexAddress(proxyWallet) {
+		return fmt.Errorf("relayer: proxy wallet must be a valid address")
+	}
+	proxyWallet = common.HexToAddress(proxyWallet).Hex()
+
 	data := strings.TrimSpace(req.Data)
 	if data == "" {
 		return errors.New("relayer: data is required")
@@ -193,7 +202,7 @@ func (c *Client) BuildProxySubmitTransactionRequest(
 	*out = SubmitTransactionRequest{
 		From:        from,
 		To:          to.Hex(),
-		ProxyWallet: DeriveProxyWalletAddress(common.HexToAddress(from)).Hex(),
+		ProxyWallet: proxyWallet,
 		Data:        data,
 		Nonce:       relayPayload.Nonce.String(),
 		Signature:   signature,

@@ -48,6 +48,15 @@ type ProxyRelayerBuilder interface {
 	) error
 }
 
+type SafeRelayerBuilder interface {
+	SafeSubmitTransactionRequest(
+		context.Context,
+		*polyauth.Signer,
+		*relayer.SafeSubmitTransactionArgs,
+		*relayer.SubmitTransactionRequest,
+	) error
+}
+
 // Option customizes a CLOB client created by NewClient.
 type Option func(*Client)
 

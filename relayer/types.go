@@ -20,6 +20,13 @@ const (
 	CallTypeDelegateCall CallType = "2"
 )
 
+type OperationType uint8
+
+const (
+	OperationCall         OperationType = 0
+	OperationDelegateCall OperationType = 1
+)
+
 // Credentials contains Relayer API-key authentication headers.
 type Credentials struct {
 	// APIKey is the relayer API key.
@@ -116,7 +123,7 @@ type Transaction struct {
 	// Signature is the 0x-prefixed transaction signature.
 	Signature string `json:"signature"`
 	// Type is the transaction type.
-	Type string `json:"type"`
+	Type NonceType `json:"type"`
 	// Owner is the transaction owner.
 	Owner string `json:"owner"`
 	// Metadata is the transaction metadata.
@@ -165,10 +172,34 @@ type ProxyTransaction struct {
 type ProxySubmitTransactionArgs struct {
 	// From is the EOA signer address. If empty, signer.Address() is used.
 	From string
+	// ProxyWallet is the user's Polymarket proxy wallet / funder address.
+	// Required. Do not derive it unless the official CREATE2 formula is fully verified.
+	ProxyWallet string
 	// Data is encoded proxy transaction batch calldata.
 	Data string
 	// Metadata is optional relayer metadata.
 	Metadata string
 	// GasLimit optionally overrides the computed proxy gas limit.
 	GasLimit string
+}
+
+type SafeTransaction struct {
+	To        string        `json:"to"`
+	Operation OperationType `json:"operation"`
+	Data      string        `json:"data"`
+	Value     string        `json:"value"`
+}
+
+// SafeSubmitTransactionArgs contains input for building a signed SAFE submit request.
+type SafeSubmitTransactionArgs struct {
+	// From is the EOA signer address. If empty, signer.Address() is used.
+	From string
+	// ProxyWallet is the Safe wallet address. If empty, it is derived from From.
+	ProxyWallet string
+	// ChainID is the EIP-712 chain id.
+	ChainID int64
+	// Transactions are Safe transactions. Multiple transactions are wrapped in MultiSend.
+	Transactions []SafeTransaction
+	// Metadata is optional caller-provided relayer metadata.
+	Metadata string
 }

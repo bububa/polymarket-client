@@ -135,9 +135,14 @@ type RelayerCTFRequest struct {
 	Value string
 }
 
+// CTFRelayerArgs contains high-level relayer options for CTF calls.
 type CTFRelayerArgs struct {
+	// Type selects SAFE or PROXY relayer signing.
+	Type relayer.NonceType
 	// From is the EOA signer address. If empty, client signer address is used.
 	From string
+	// ProxyWallet is the user's Polymarket proxy wallet / funder address.
+	ProxyWallet string
 	// Metadata is optional relayer metadata.
 	Metadata string
 	// GasLimit optionally overrides the computed proxy gas limit.
