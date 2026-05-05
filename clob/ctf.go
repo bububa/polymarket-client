@@ -71,6 +71,9 @@ func (c *Client) BuildRedeemPositionsTx(req *RedeemPositionsRequest, out *CTFTra
 
 // BuildRedeemNegRiskTx writes the destination and calldata for neg-risk adapter redemption into out.
 func (c *Client) BuildRedeemNegRiskTx(req *RedeemNegRiskRequest, out *CTFTransaction) error {
+	if req == nil {
+		return errors.New("polymarket: nil neg-risk redeem request")
+	}
 	data, err := negRiskABI.Pack("redeemPositions", req.ConditionID, req.Amounts)
 	if err != nil {
 		return fmt.Errorf("ctf: pack neg-risk redeemPositions: %w", err)
@@ -385,6 +388,9 @@ func (c *Client) BuildCTFRelayerRequest(
 	if c.relayerClient == nil {
 		return errors.New("polymarket: relayer client is required")
 	}
+	if req == nil {
+		req = new(CTFRelayerArgs)
+	}
 
 	from := strings.TrimSpace(req.From)
 	if from == "" {
@@ -392,9 +398,6 @@ func (c *Client) BuildCTFRelayerRequest(
 	}
 	if !common.IsHexAddress(from) {
 		return fmt.Errorf("polymarket: relayer from must be a valid hex address")
-	}
-	if req == nil {
-		req = new(CTFRelayerArgs)
 	}
 
 	var submit relayer.SubmitTransactionRequest
