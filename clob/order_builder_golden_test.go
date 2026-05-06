@@ -144,7 +144,7 @@ func TestOrderBuilderV2_GoldenBuildLimitOrderAmountsAndDefaults(t *testing.T) {
 				Size:          formatFloatForTest(vector.Input.Size),
 				Side:          Side(vector.Input.Side),
 				Expiration:    strconv.FormatInt(vector.Input.Expiration, 10),
-				SignatureType: new(sigType),
+				SignatureType: &sigType,
 				Maker:         vector.Input.Funder,
 			}, CreateOrderOptions{
 				TickSize: vector.Input.TickSize,
@@ -220,7 +220,7 @@ func TestBuildMarketOrder_IntentionallyDivergesFromPyClobClientV2(t *testing.T) 
 				Price:         formatFloatForTest(vector.Input.Price),
 				Amount:        formatFloatForTest(vector.Input.Amount),
 				Side:          Side(vector.Input.Side),
-				SignatureType: new(sigType),
+				SignatureType: &sigType,
 				Maker:         vector.Input.Funder,
 			}, CreateOrderOptions{
 				TickSize: vector.Input.TickSize,
