@@ -27,7 +27,7 @@ func (c *Client) BuildSplitPositionTx(req *SplitPositionRequest, out *CTFTransac
 	if err != nil {
 		return fmt.Errorf("ctf: pack splitPosition: %w", err)
 	}
-	to, err := c.contractAddress(func(cc ContractConfig) common.Address { return cc.ConditionalTokens })
+	to, err := c.contractAddress(func(cc ContractConfig) common.Address { return cc.CtfCollateralAdapter })
 	if err != nil {
 		return err
 	}
@@ -44,7 +44,7 @@ func (c *Client) BuildMergePositionsTx(req *MergePositionsRequest, out *CTFTrans
 	if err != nil {
 		return fmt.Errorf("ctf: pack mergePositions: %w", err)
 	}
-	to, err := c.contractAddress(func(cc ContractConfig) common.Address { return cc.ConditionalTokens })
+	to, err := c.contractAddress(func(cc ContractConfig) common.Address { return cc.CtfCollateralAdapter })
 	if err != nil {
 		return err
 	}
