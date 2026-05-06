@@ -53,10 +53,10 @@ func EncodeProxyTransactionData(txs []ProxyTransaction) (string, error) {
 	}
 
 	arrayT, err := abi.NewType("tuple[]", "", []abi.ArgumentMarshaling{
-		{Name: "to", Type: "address"},
 		{Name: "typeCode", Type: "uint8"},
-		{Name: "data", Type: "bytes"},
+		{Name: "to", Type: "address"},
 		{Name: "value", Type: "uint256"},
+		{Name: "data", Type: "bytes"},
 	})
 	if err != nil {
 		return "", err
@@ -111,8 +111,8 @@ func EncodeProxyTransactionData(txs []ProxyTransaction) (string, error) {
 	return hexutil.Encode(encoded), nil
 }
 
-// BuildProxySubmitTransactionRequest builds and signs a PROXY relayer submit request.
-func (c *Client) BuildProxySubmitTransactionRequest(
+// ProxySubmitTransactionRequest builds and signs a PROXY relayer submit request.
+func (c *Client) ProxySubmitTransactionRequest(
 	ctx context.Context,
 	signer *polyauth.Signer,
 	req *ProxySubmitTransactionArgs,

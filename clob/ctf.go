@@ -61,7 +61,7 @@ func (c *Client) BuildRedeemPositionsTx(req *RedeemPositionsRequest, out *CTFTra
 	if err != nil {
 		return fmt.Errorf("ctf: pack redeemPositions: %w", err)
 	}
-	to, err := c.contractAddress(func(cc ContractConfig) common.Address { return cc.ConditionalTokens })
+	to, err := c.contractAddress(func(cc ContractConfig) common.Address { return cc.CtfCollateralAdapter })
 	if err != nil {
 		return err
 	}
@@ -440,6 +440,8 @@ func (c *Client) BuildCTFRelayerRequest(
 		if err != nil {
 			return err
 		}
+		encodedData = "0x34ee9791" + encodedData[2:]
+
 		err = builder.ProxySubmitTransactionRequest(ctx, c.auth.Signer, &relayer.ProxySubmitTransactionArgs{
 			From:        from,
 			ProxyWallet: req.ProxyWallet,

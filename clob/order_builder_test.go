@@ -519,13 +519,13 @@ func TestBuildOrder_WithMakerUsesFunderAsMaker(t *testing.T) {
 	builder := NewOrderBuilder(client)
 
 	funder := "0x1111111111111111111111111111111111111111"
-
+	SignatureType := SignatureTypeEOA
 	order, err := builder.BuildOrder(OrderArgsV2{
 		TokenID:       "123",
 		Price:         "0.50",
 		Size:          "10",
 		Side:          Buy,
-		SignatureType: new(SignatureTypeProxy),
+		SignatureType: &SignatureType,
 		Maker:         funder,
 	}, CreateOrderOptions{TickSize: "0.01"})
 
@@ -538,13 +538,13 @@ func TestBuildOrder_EmptyMakerDefaultsToSigner(t *testing.T) {
 	signer := testKey()
 	client := NewClient("", WithSigner(signer))
 	builder := NewOrderBuilder(client)
-
+	SignatureType := SignatureTypeEOA
 	order, err := builder.BuildOrder(OrderArgsV2{
 		TokenID:       "123",
 		Price:         "0.50",
 		Size:          "10",
 		Side:          Buy,
-		SignatureType: new(SignatureTypeEOA),
+		SignatureType: &SignatureType,
 	}, CreateOrderOptions{TickSize: "0.01"})
 
 	require.NoError(t, err)
@@ -557,13 +557,14 @@ func TestBuildMarketOrder_WithMakerUsesFunderAsMaker(t *testing.T) {
 	builder := NewOrderBuilder(client)
 
 	funder := "0x1111111111111111111111111111111111111111"
+	SignatureType := SignatureTypeEOA
 
 	order, err := builder.BuildMarketOrder(MarketOrderArgsV2{
 		TokenID:       "123",
 		Price:         "0.50",
 		Amount:        "100",
 		Side:          Buy,
-		SignatureType: new(SignatureTypeProxy),
+		SignatureType: &SignatureType,
 		Maker:         funder,
 	}, CreateOrderOptions{TickSize: "0.01"})
 

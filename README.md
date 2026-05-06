@@ -67,15 +67,11 @@ package main
 import (
     "context"
     "fmt"
-
-    "github.com/ethereum/go-ethereum/crypto"
-
     "github.com/bububa/polymarket-client/clob"
-    "github.com/bububa/polymarket-client/internal/polyauth"
 )
 
 func main() {
-    privateKey, _ := crypto.HexToECDSA("your-private-key-hex")
+    signer, _ := clob.ParsePrivateKey("your-private-key-hex")
 
     client := clob.NewClient("",
         clob.WithCredentials(clob.Credentials{
@@ -83,7 +79,7 @@ func main() {
             Secret:     "your-api-secret",
             Passphrase: "your-api-passphrase",
         }),
-        clob.WithSigner(polyauth.NewSigner(privateKey)),
+        clob.WithSigner(signer),
         clob.WithChainID(clob.PolygonChainID), // 137
     )
 
@@ -191,8 +187,9 @@ L2 auth requires BOTH a `polyauth.Signer` (from your private key) AND `Credentia
 ### Creating API Keys
 
 ```go
+signer, _ := clob.ParsePrivateKey("your-private-key-hex")
 client := clob.NewClient("",
-    clob.WithSigner(polyauth.NewSigner(privateKey)),
+    clob.WithSigner(signer),
     clob.WithChainID(clob.PolygonChainID),
 )
 
