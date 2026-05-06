@@ -78,7 +78,7 @@ func (c *Client) BuildRedeemNegRiskTx(req *RedeemNegRiskRequest, out *CTFTransac
 	if err != nil {
 		return fmt.Errorf("ctf: pack neg-risk redeemPositions: %w", err)
 	}
-	to, err := c.contractAddress(func(cc ContractConfig) common.Address { return cc.NegRiskAdapter })
+	to, err := c.contractAddress(func(cc ContractConfig) common.Address { return cc.NegRiskCtfCollateralAdapter })
 	if err != nil {
 		return err
 	}
