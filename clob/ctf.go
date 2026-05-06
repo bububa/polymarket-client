@@ -440,7 +440,8 @@ func (c *Client) BuildCTFRelayerRequest(
 		if err != nil {
 			return err
 		}
-		encodedData = "0x34ee9791" + encodedData[2:]
+const proxySubmitTransactionSelector = "0x34ee9791"
+encodedData = proxySubmitTransactionSelector + encodedData[2:]
 
 		err = builder.ProxySubmitTransactionRequest(ctx, c.auth.Signer, &relayer.ProxySubmitTransactionArgs{
 			From:        from,
