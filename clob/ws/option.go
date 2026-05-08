@@ -15,6 +15,12 @@ func WithHost(host string) Option {
 	}
 }
 
+func WithSportsHost(host string) Option {
+	return func(clt *Client) {
+		clt.sportsHost = host
+	}
+}
+
 // WithDialOptions sets custom dial options for the WebSocket connection.
 func WithDialOptions(opts *websocket.DialOptions) Option {
 	return func(clt *Client) {
@@ -34,11 +40,11 @@ func WithAutoReconnect(v bool) Option {
 	}
 }
 
-// WithKeepAliveInterval sets the text PING interval for Market/User channels.
-// Set interval <= 0 to disable keepalive.
-func WithKeepAliveInterval(interval time.Duration) Option {
+// WithHeartbeatInterval sets the text PING interval for Market/User channels.
+// Set interval <= 0 to disable heartbeat.
+func WithHeartbeatInterval(interval time.Duration) Option {
 	return func(clt *Client) {
-		clt.keepAlive = interval
+		clt.heartbeatInterval = interval
 	}
 }
 

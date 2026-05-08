@@ -1,6 +1,7 @@
 package ws
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -130,7 +131,7 @@ func TestClientSendsTextKeepAlive(t *testing.T) {
 	client := New(
 		WithHost(url),
 		WithAutoReconnect(false),
-		WithKeepAliveInterval(20*time.Millisecond),
+		WithHeartbeatInterval(20*time.Millisecond),
 	)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -343,5 +344,69 @@ func TestDecodeEventArrayError(t *testing.T) {
 	if len(events) != 1 || events[0].err == nil {
 		data, _ := json.Marshal(events)
 		t.Fatalf("expected decode error, got %s", data)
+	}
+}
+
+func TestClientRespondsToServerPingWithPong(t *testing.T) {
+	gotPong := make(chan struct{}, 1)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{})
+		if err != nil {
+			t.Errorf("accept: %v", err)
+			return
+		}
+		defer conn.Close(websocket.StatusNormalClosure, "")
+
+		ctx := context.Background()
+		if err := conn.Write(ctx, websocket.MessageText, []byte("ping")); err != nil {
+			t.Errorf("write ping: %v", err)
+			return
+		}
+
+		readCtx, cancel := context.WithTimeout(ctx, time.Second)
+		defer cancel()
+
+		msgType, data, err := conn.Read(readCtx)
+		if err != nil {
+			t.Errorf("read pong: %v", err)
+			return
+		}
+		if msgType != websocket.MessageText || !bytes.EqualFold(data, []byte("pong")) {
+			t.Errorf("message = %v %q, want text pong", msgType, data)
+			return
+		}
+
+		gotPong <- struct{}{}
+	}))
+	defer server.Close()
+
+	url := "ws" + strings.TrimPrefix(server.URL, "http")
+	client := New(
+		WithSportsHost(url),
+		WithAutoReconnect(false),
+		WithHeartbeatInterval(0), // isolate server-ping -> client-pong behavior
+	)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	if err := client.ConnectSports(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	select {
+	case <-gotPong:
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for pong")
+	}
+
+	select {
+	case ev := <-client.Events():
+		t.Fatalf("unexpected event from ping/pong frame: %#v", ev)
+	case err := <-client.Errors():
+		t.Fatalf("unexpected error: %v", err)
+	case <-time.After(50 * time.Millisecond):
 	}
 }

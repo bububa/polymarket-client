@@ -18,31 +18,33 @@ import (
 
 const (
 	// DefaultHost is the production CLOB WebSocket host.
-	DefaultHost = "wss://ws-subscriptions-clob.polymarket.com"
-	// DefaultKeepAliveInterval is the documented Market/User channel heartbeat interval.
-	DefaultKeepAliveInterval = 10 * time.Second
+	DefaultHost       = "wss://ws-subscriptions-clob.polymarket.com"
+	DefaultSportsHost = "wss://sports-api.polymarket.com"
+	// DefaultHeartbeatInterval is the documented Market/User channel heartbeat interval.
+	DefaultHeartbeatInterval = 10 * time.Second
 )
 
 type Callback func()
 
 // Client is a reconnecting WebSocket client for CLOB market and user streams.
 type Client struct {
-	host string
-	url  *atomic.String
+	host       string
+	sportsHost string
+	url        *atomic.String
 
 	dialOpts *websocket.DialOptions
 	creds    *clob.Credentials
 
-	conn          *atomic.Pointer[websocket.Conn]
-	closed        *atomic.Bool
-	connected     *atomic.Bool
-	ctx           context.Context
-	cancel        context.CancelFunc
-	events        chan Event
-	errs          chan error
-	autoReconnect bool
-	keepAlive     time.Duration
-	reconnecting  *atomic.Bool
+	conn              *atomic.Pointer[websocket.Conn]
+	closed            *atomic.Bool
+	connected         *atomic.Bool
+	ctx               context.Context
+	cancel            context.CancelFunc
+	events            chan Event
+	errs              chan error
+	autoReconnect     bool
+	heartbeatInterval time.Duration
+	reconnecting      *atomic.Bool
 
 	onConnected    Callback
 	onReconnected  Callback
@@ -71,13 +73,14 @@ type subscription struct {
 func New(opts ...Option) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 	clt := &Client{
-		host:          DefaultHost,
-		ctx:           ctx,
-		cancel:        cancel,
-		events:        make(chan Event, 256),
-		errs:          make(chan error, 16),
-		autoReconnect: true,
-		keepAlive:     DefaultKeepAliveInterval,
+		host:              DefaultHost,
+		sportsHost:        DefaultSportsHost,
+		ctx:               ctx,
+		cancel:            cancel,
+		events:            make(chan Event, 256),
+		errs:              make(chan error, 16),
+		autoReconnect:     true,
+		heartbeatInterval: DefaultHeartbeatInterval,
 
 		url:          atomic.NewString(""),
 		conn:         atomic.NewPointer[websocket.Conn](nil),
@@ -101,7 +104,7 @@ func (c *Client) MarketURL() string { return c.host + "/ws/market" }
 func (c *Client) UserURL() string { return c.host + "/ws/user" }
 
 // SportsURL returns the public sports-channel WebSocket URL.
-func (c *Client) SportsURL() string { return c.host + "/ws" }
+func (c *Client) SportsURL() string { return c.sportsHost + "/ws" }
 
 // ConnectMarket opens the market-channel WebSocket.
 func (c *Client) ConnectMarket(ctx context.Context) error {
@@ -144,8 +147,8 @@ func (c *Client) connect(ctx context.Context, url string) error {
 	}
 
 	go c.readLoop(c.ctx, conn)
-	if c.keepAlive > 0 {
-		go c.keepAliveLoop(c.ctx, conn)
+	if c.heartbeatInterval > 0 {
+		go c.heartbeat(c.ctx, conn)
 	}
 	c.replaySubscriptions(ctx)
 	return nil
@@ -369,7 +372,20 @@ func (c *Client) readLoop(ctx context.Context, conn *websocket.Conn) {
 			c.scheduleReconnect(conn)
 			return
 		}
-		if bytes.Equal(data, []byte("PONG")) {
+		if bytes.EqualFold(data, []byte("PONG")) {
+			continue
+		} else if bytes.EqualFold(data, []byte("PING")) {
+			writeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			err := conn.Write(writeCtx, websocket.MessageText, []byte("pong"))
+			cancel()
+			if err != nil {
+				if c.ctx.Err() != nil || websocket.CloseStatus(err) != -1 {
+					return
+				}
+				c.sendErr(fmt.Errorf("polymarket: websocket pong: %w", err))
+				c.scheduleReconnect(conn)
+				return
+			}
 			continue
 		}
 		for _, event := range decodeEvents(data) {
@@ -386,11 +402,11 @@ func (c *Client) readLoop(ctx context.Context, conn *websocket.Conn) {
 	}
 }
 
-func (c *Client) keepAliveLoop(ctx context.Context, conn *websocket.Conn) {
-	if c.keepAlive <= 0 {
+func (c *Client) heartbeat(ctx context.Context, conn *websocket.Conn) {
+	if c.heartbeatInterval <= 0 {
 		return
 	}
-	ticker := time.NewTicker(c.keepAlive)
+	ticker := time.NewTicker(c.heartbeatInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -404,9 +420,11 @@ func (c *Client) keepAliveLoop(ctx context.Context, conn *websocket.Conn) {
 			err := conn.Write(writeCtx, websocket.MessageText, []byte("PING"))
 			cancel()
 			if err != nil {
-				if c.ctx.Err() == nil && websocket.CloseStatus(err) == -1 {
-					c.sendErr(fmt.Errorf("polymarket: websocket keepalive: %w", err))
+				if c.ctx.Err() != nil || websocket.CloseStatus(err) != -1 {
+					return
 				}
+				c.sendErr(fmt.Errorf("polymarket: websocket ping: %w", err))
+				c.scheduleReconnect(conn)
 				return
 			}
 		}
