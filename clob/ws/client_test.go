@@ -141,6 +141,45 @@ func TestDecodeMarketResolvedAcceptsAssetIDsVariant(t *testing.T) {
 	}
 }
 
+func TestDecodeOrderUsesDocumentedIDField(t *testing.T) {
+	event, err := DecodeEvent([]byte(`{"event_type":"order","id":"order-1","asset_id":"asset-1","market":"0xabc","price":"0.42","size":"10","side":"BUY","status":"LIVE"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := event.(*OrderEvent)
+	if got.OrderID != "order-1" {
+		t.Fatalf("OrderID = %q, want order-1", got.OrderID)
+	}
+}
+
+func TestDecodeOrderAcceptsOrderIDCompat(t *testing.T) {
+	event, err := DecodeEvent([]byte(`{"event_type":"order","order_id":"order-1","asset_id":"asset-1","market":"0xabc","price":"0.42","size":"10","side":"BUY","status":"LIVE"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := event.(*OrderEvent)
+	if got.OrderID != "order-1" {
+		t.Fatalf("OrderID = %q, want order-1", got.OrderID)
+	}
+}
+
+func TestMarshalOrderUsesDocumentedIDField(t *testing.T) {
+	payload, err := json.Marshal(OrderEvent{OrderID: "order-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(payload, &raw); err != nil {
+		t.Fatal(err)
+	}
+	if raw["id"] != "order-1" {
+		t.Fatalf("id = %v, want order-1", raw["id"])
+	}
+	if _, ok := raw["order_id"]; ok {
+		t.Fatalf("payload should not include order_id: %s", payload)
+	}
+}
+
 func TestDecodePriceChangeBatch(t *testing.T) {
 	events := decodeEvents([]byte(`{
 		"event_type": "price_change",
