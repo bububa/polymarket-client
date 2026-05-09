@@ -2,6 +2,7 @@ package clob
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -118,7 +119,8 @@ func TestGetOpenOrdersAcceptsPagedAndArrayResponses(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			client := NewClient(srv.URL,
+			client := NewClient(
+				srv.URL,
 				WithSigner(testKey()),
 				WithCredentials(Credentials{
 					Key:        "test-key",
@@ -164,7 +166,8 @@ func TestGetOpenOrdersPageDecodesPaginationMetadata(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := NewClient(srv.URL,
+	client := NewClient(
+		srv.URL,
 		WithSigner(testKey()),
 		WithCredentials(Credentials{
 			Key:        "test-key",
@@ -243,7 +246,8 @@ func TestGetOpenOrdersPageDecodesPaginationMetadataFromWrappedShapes(t *testing.
 			}))
 			defer srv.Close()
 
-			client := NewClient(srv.URL,
+			client := NewClient(
+				srv.URL,
 				WithSigner(testKey()),
 				WithCredentials(Credentials{
 					Key:        "test-key",
@@ -305,7 +309,8 @@ func TestGetOpenOrdersPageSendsNextCursor(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := NewClient(srv.URL,
+	client := NewClient(
+		srv.URL,
 		WithSigner(testKey()),
 		WithCredentials(Credentials{
 			Key:        "test-key",
@@ -344,7 +349,8 @@ func TestBuildOrder_UsesDefaultSignatureType(t *testing.T) {
 		_, _ = w.Write([]byte(`{"data":[]}`))
 	}))
 	defer srv.Close()
-	client := NewClient(srv.URL,
+	client := NewClient(
+		srv.URL,
 		WithSigner(testKey()),
 		WithCredentials(Credentials{
 			Key:        "test-key",
@@ -388,7 +394,8 @@ func TestBuildOrder_ExplicitSignatureTypeOverridesDefault(t *testing.T) {
 		_, _ = w.Write([]byte(`{"data":[]}`))
 	}))
 	defer srv.Close()
-	client := NewClient(srv.URL,
+	client := NewClient(
+		srv.URL,
 		WithSigner(testKey()),
 		WithCredentials(Credentials{
 			Key:        "test-key",
@@ -398,13 +405,13 @@ func TestBuildOrder_ExplicitSignatureTypeOverridesDefault(t *testing.T) {
 		WithDefaultSignatureType(SignatureTypeProxy),
 	)
 	builder := NewOrderBuilder(client)
-
+	SignatureType := SignatureTypeEOA
 	order, err := builder.BuildOrder(OrderArgsV2{
 		TokenID:       "123",
 		Price:         "0.50",
 		Size:          "10",
 		Side:          Buy,
-		SignatureType: new(SignatureTypeEOA),
+		SignatureType: &SignatureType,
 	}, CreateOrderOptions{
 		TickSize: "0.01",
 	})
@@ -432,7 +439,8 @@ func TestBuildMarketOrder_UsesDefaultSignatureType(t *testing.T) {
 		_, _ = w.Write([]byte(`{"data":[]}`))
 	}))
 	defer srv.Close()
-	client := NewClient(srv.URL,
+	client := NewClient(
+		srv.URL,
 		WithSigner(testKey()),
 		WithCredentials(Credentials{
 			Key:        "test-key",
@@ -476,7 +484,8 @@ func TestBuildMarketOrder_ExplicitSignatureTypeOverridesDefault(t *testing.T) {
 		_, _ = w.Write([]byte(`{"data":[]}`))
 	}))
 	defer srv.Close()
-	client := NewClient(srv.URL,
+	client := NewClient(
+		srv.URL,
 		WithSigner(testKey()),
 		WithCredentials(Credentials{
 			Key:        "test-key",
@@ -486,13 +495,13 @@ func TestBuildMarketOrder_ExplicitSignatureTypeOverridesDefault(t *testing.T) {
 		WithDefaultSignatureType(SignatureTypeProxy),
 	)
 	builder := NewOrderBuilder(client)
-
+	SignatureType := SignatureTypeEOA
 	order, err := builder.BuildMarketOrder(MarketOrderArgsV2{
 		TokenID:       "123",
 		Price:         "0.50",
 		Amount:        "100",
 		Side:          Buy,
-		SignatureType: new(SignatureTypeEOA),
+		SignatureType: &SignatureType,
 	}, CreateOrderOptions{
 		TickSize: "0.01",
 	})
@@ -502,5 +511,89 @@ func TestBuildMarketOrder_ExplicitSignatureTypeOverridesDefault(t *testing.T) {
 
 	if order.SignatureType != SignatureTypeEOA {
 		t.Fatalf("SignatureType = %d, want %d", order.SignatureType, SignatureTypeEOA)
+	}
+}
+
+func TestUpdateBalanceAllowanceSendsPoly1271SignatureType(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/balance-allowance/update" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+
+		var body BalanceAllowanceParams
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+
+		if body.AssetType != AssetCollateral {
+			t.Fatalf("asset_type = %q, want %q", body.AssetType, AssetCollateral)
+		}
+		if body.TokenID != "" {
+			t.Fatalf("token_id = %q, want empty", body.TokenID)
+		}
+		if body.SignatureType != SignatureTypePoly1271 {
+			t.Fatalf("signature_type = %d, want %d", body.SignatureType, SignatureTypePoly1271)
+		}
+
+		_, _ = w.Write([]byte(`{"balance":"100","allowance":"100"}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient(
+		srv.URL,
+		WithSigner(testKey()),
+		WithCredentials(Credentials{
+			Key:        "test-key",
+			Secret:     "c2VjcmV0",
+			Passphrase: "test-passphrase",
+		}),
+	)
+
+	var out BalanceAllowanceResponse
+	if err := client.UpdateBalanceAllowance(context.Background(), BalanceAllowanceParams{
+		AssetType:     AssetCollateral,
+		SignatureType: SignatureTypePoly1271,
+	}, &out); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUpdateBalanceAllowanceOmitsDefaultSignatureType(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/balance-allowance/update" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+
+		var raw map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+
+		if raw["asset_type"] != string(AssetCollateral) {
+			t.Fatalf("asset_type = %v, want %q", raw["asset_type"], AssetCollateral)
+		}
+		if _, ok := raw["signature_type"]; ok {
+			t.Fatalf("signature_type should be omitted for default EOA, got %v", raw["signature_type"])
+		}
+
+		_, _ = w.Write([]byte(`{"balance":"100","allowance":"100"}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient(
+		srv.URL,
+		WithSigner(testKey()),
+		WithCredentials(Credentials{
+			Key:        "test-key",
+			Secret:     "c2VjcmV0",
+			Passphrase: "test-passphrase",
+		}),
+	)
+
+	var out BalanceAllowanceResponse
+	if err := client.UpdateBalanceAllowance(context.Background(), BalanceAllowanceParams{
+		AssetType: AssetCollateral,
+	}, &out); err != nil {
+		t.Fatal(err)
 	}
 }

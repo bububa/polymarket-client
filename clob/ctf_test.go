@@ -22,19 +22,20 @@ func TestBuildSplitPositionTx(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	client := NewClient("")
+	client := NewClient("", WithChainID(PolygonChainID))
 	var tx CTFTransaction
 
 	req := SplitBinary(
 		contracts.Collateral,
 		common.HexToHash("0x1234"),
-		big.NewInt(1_000_000))
+		big.NewInt(1_000_000),
+	)
 	err = client.BuildSplitPositionTx(&req, &tx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if tx.To != contracts.ConditionalTokens {
-		t.Fatalf("to = %s, want %s", tx.To, contracts.ConditionalTokens)
+	if tx.To != contracts.CTFCollateralAdapter {
+		t.Fatalf("to = %s, want %s", tx.To, contracts.CTFCollateralAdapter)
 	}
 	if len(tx.Data) < 4 {
 		t.Fatalf("calldata too short: %d", len(tx.Data))
@@ -63,11 +64,11 @@ func TestSubmitCTFRelayerTransaction(t *testing.T) {
 		To:   common.HexToAddress("0x0000000000000000000000000000000000000001"),
 		Data: []byte{0x12, 0x34},
 	}, &RelayerCTFRequest{
-		From:        "0xfrom",
-		ProxyWallet: "0xproxy",
+		From:        "0x0000000000000000000000000000000000000001",
+		ProxyWallet: "0x0000000000000000000000000000000000000002",
 		Nonce:       "7",
 		Signature:   "0xsig",
-		Type:        "SAFE",
+		Type:        relayer.NonceTypeSafe,
 	}, &resp)
 	if err != nil {
 		t.Fatal(err)

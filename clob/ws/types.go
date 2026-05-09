@@ -178,8 +178,8 @@ type LastTradePriceEvent struct {
 // OrderEvent carries an order status change (fill, cancel, expiry).
 type OrderEvent struct {
 	BaseEvent
-	// OrderID is the affected order identifier.
-	OrderID string `json:"order_id"`
+	// OrderID is the affected order identifier from the user-channel id field.
+	OrderID string `json:"id"`
 	// AssetID is the conditional token identifier.
 	AssetID string `json:"asset_id"`
 	// Market is the condition ID.
@@ -196,6 +196,27 @@ type OrderEvent struct {
 	Reason string `json:"reason,omitempty"`
 	// Timestamp is the event time.
 	Timestamp clob.Time `json:"timestamp"`
+}
+
+// UnmarshalJSON decodes the documented user-channel id field into OrderID.
+func (e *OrderEvent) UnmarshalJSON(data []byte) error {
+	type alias OrderEvent
+	aux := struct {
+		*alias
+		ID            string `json:"id"`
+		OrderIDCompat string `json:"order_id"`
+	}{
+		alias: (*alias)(e),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	if aux.ID != "" {
+		e.OrderID = aux.ID
+	} else if aux.OrderIDCompat != "" {
+		e.OrderID = aux.OrderIDCompat
+	}
+	return nil
 }
 
 // TradeEvent carries a matched trade notification.

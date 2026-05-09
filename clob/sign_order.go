@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"math/big"
 	"strconv"
+	"strings"
 	"time"
 
-	"github.com/bububa/polymarket-client/internal/polyauth"
 	"github.com/ethereum/go-ethereum/common"
 	ethmath "github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/signer/core/apitypes"
+
+	"github.com/bububa/polymarket-client/internal/polyauth"
 )
 
 const (
@@ -85,6 +87,24 @@ func SignOrder(signer *polyauth.Signer, chainID int64, order *SignedOrder, opts 
 	}
 	if config.verifyingContract != (common.Address{}) {
 		verifyingContract = config.verifyingContract
+	}
+
+	if order.SignatureType == SignatureTypePoly1271 {
+		depositWallet, err := inferDepositWalletForSigning(order)
+		if err != nil {
+			return err
+		}
+
+		if err := prepareDepositWalletOrderForSigning(order, depositWallet, config); err != nil {
+			return err
+		}
+
+		signature, err := buildDepositWalletOrderSignature(signer, chainID, verifyingContract, depositWallet, *order)
+		if err != nil {
+			return err
+		}
+		order.Signature = signature
+		return nil
 	}
 
 	if err := prepareOrderForSigning(signer, order, config); err != nil {
@@ -164,6 +184,32 @@ func prepareOrderForSigning(signer *polyauth.Signer, order *SignedOrder, config 
 		return err
 	}
 	return nil
+}
+
+func inferDepositWalletForSigning(order *SignedOrder) (common.Address, error) {
+	if order == nil {
+		return common.Address{}, errors.New("polymarket: order is nil")
+	}
+
+	maker := strings.TrimSpace(order.Maker)
+	signer := strings.TrimSpace(order.Signer)
+
+	switch {
+	case maker != "":
+		if !common.IsHexAddress(maker) {
+			return common.Address{}, fmt.Errorf("polymarket: invalid maker address %q", order.Maker)
+		}
+		return common.HexToAddress(maker), nil
+
+	case signer != "":
+		if !common.IsHexAddress(signer) {
+			return common.Address{}, fmt.Errorf("polymarket: invalid signer address %q", order.Signer)
+		}
+		return common.HexToAddress(signer), nil
+
+	default:
+		return common.Address{}, errors.New("polymarket: deposit wallet order requires maker or signer deposit wallet address")
+	}
 }
 
 func buildOrderTypedData(chainID int64, verifyingContract common.Address, order SignedOrder) apitypes.TypedData {

@@ -10,6 +10,10 @@ const (
 	NonceTypeProxy NonceType = "PROXY"
 	// NonceTypeSafe selects the Safe-wallet nonce.
 	NonceTypeSafe NonceType = "SAFE"
+	// NonceTypeWallet selects the deposit-wallet batch nonce.
+	NonceTypeWallet NonceType = "WALLET"
+	// NonceTypeWalletCreate selects deposit-wallet deployment.
+	NonceTypeWalletCreate NonceType = "WALLET-CREATE"
 )
 
 type CallType string
@@ -68,24 +72,48 @@ type SignatureParams struct {
 	Relay      string `json:"relay,omitempty"`
 }
 
+// DepositWalletCall is one call in a deposit-wallet batch.
+type DepositWalletCall struct {
+	// Target is the contract address to call.
+	Target string `json:"target"`
+	// Value is the native token value for the call.
+	Value string `json:"value"`
+	// Data is 0x-prefixed calldata.
+	Data string `json:"data"`
+}
+
+// DepositWalletParams contains the relayer payload for WALLET batch transactions.
+type DepositWalletParams struct {
+	// DepositWallet is the deterministic deposit wallet address.
+	DepositWallet string `json:"depositWallet"`
+	// Deadline is the Unix timestamp after which the batch is invalid.
+	Deadline string `json:"deadline"`
+	// Calls are the wallet calls executed by the batch.
+	Calls []DepositWalletCall `json:"calls"`
+}
+
 // SubmitTransactionRequest is the request body for POST /submit.
 type SubmitTransactionRequest struct {
-	// From is the signer address.
+	// From is the signer/owner address.
 	From string `json:"from"`
 	// To is the target contract address.
+	// For WALLET-CREATE this is the deposit wallet factory.
 	To string `json:"to"`
-	// ProxyWallet is the user's Polymarket proxy wallet.
-	ProxyWallet string `json:"proxyWallet"`
-	// Data is 0x-prefixed encoded transaction calldata.
-	Data string `json:"data"`
+	// ProxyWallet is the user's Polymarket proxy/safe wallet for legacy relayer flows.
+	ProxyWallet string `json:"proxyWallet,omitempty"`
+	// Data is 0x-prefixed encoded transaction calldata for legacy relayer flows.
+	Data string `json:"data,omitempty"`
 	// Nonce is the relayer transaction nonce.
-	Nonce string `json:"nonce"`
+	Nonce string `json:"nonce,omitempty"`
 	// Signature is the 0x-prefixed transaction signature.
-	Signature string `json:"signature"`
-	// SignatureParams are Safe transaction parameters.
-	SignatureParams SignatureParams `json:"signatureParams"`
-	// Type is the transaction type, typically SAFE or PROXY.
+	// WALLET-CREATE does not require a user signature.
+	Signature string `json:"signature,omitempty"`
+	// SignatureParams are Safe/proxy transaction parameters.
+	SignatureParams *SignatureParams `json:"signatureParams,omitempty"`
+	// Type is the transaction type: SAFE, PROXY, WALLET, or WALLET-CREATE.
 	Type NonceType `json:"type"`
+	// DepositWalletParams contains WALLET batch payload details.
+	DepositWalletParams *DepositWalletParams `json:"depositWalletParams,omitempty"`
 	// Metadata is optional caller-provided transaction metadata.
 	Metadata string `json:"metadata,omitempty"`
 	// Value is the native token value for the call when required.
@@ -202,4 +230,11 @@ type SafeSubmitTransactionArgs struct {
 	Transactions []SafeTransaction
 	// Metadata is optional caller-provided relayer metadata.
 	Metadata string
+}
+
+type WalletCreateSubmitTransactionArgs struct {
+	// From is the owner address. If empty, signer.Address() is used.
+	From string
+	// Factory is the deposit wallet factory address. If empty, PolygonDepositWalletFactory is used.
+	Factory string
 }

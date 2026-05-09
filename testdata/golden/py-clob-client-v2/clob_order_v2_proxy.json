@@ -1,0 +1,62 @@
+{
+  "expected": {
+    "postOrderRequest": {
+      "deferExec": false,
+      "order": {
+        "builder": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "expiration": "0",
+        "maker": "0x1111111111111111111111111111111111111111",
+        "makerAmount": "4200000",
+        "metadata": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "salt": 568700643982,
+        "side": "BUY",
+        "signature": "0x27c43178614b16b1f2a4f4d68fbbc02d19c16c1fd4f28cabe0b6e440cdc7e3940efa7add359e46cfa9f319f3971570ad16cbd1f0768e10ca31807c80dbc59f721b",
+        "signatureType": 1,
+        "signer": "0xe2df35F6db0E92098fD6b45A62F032eAAc24729A",
+        "takerAmount": "10000000",
+        "timestamp": "1778049345910",
+        "tokenId": "4738542302108129612856912335517660352849664845664685440963190764720214313804"
+      },
+      "orderType": "GTC",
+      "owner": "test-api-key-owner",
+      "postOnly": false
+    },
+    "signedOrder": {
+      "builder": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "expiration": "0",
+      "maker": "0x1111111111111111111111111111111111111111",
+      "makerAmount": "4200000",
+      "metadata": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "salt": "568700643982",
+      "side": 0,
+      "signature": "0x27c43178614b16b1f2a4f4d68fbbc02d19c16c1fd4f28cabe0b6e440cdc7e3940efa7add359e46cfa9f319f3971570ad16cbd1f0768e10ca31807c80dbc59f721b",
+      "signatureType": 1,
+      "signer": "0xe2df35F6db0E92098fD6b45A62F032eAAc24729A",
+      "takerAmount": "10000000",
+      "timestamp": "1778049345910",
+      "tokenId": "4738542302108129612856912335517660352849664845664685440963190764720214313804"
+    },
+    "signer": "0xe2df35F6db0E92098fD6b45A62F032eAAc24729A"
+  },
+  "generatedBy": {
+    "script": "scripts/generate_golden_vectors/generate_relayer_proxy.py",
+    "sdk": "py-clob-client-v2"
+  },
+  "input": {
+    "chainId": 137,
+    "expiration": 0,
+    "funder": "0x1111111111111111111111111111111111111111",
+    "negRisk": false,
+    "owner": "test-api-key-owner",
+    "price": 0.42,
+    "privateKey": "0x59c6995e998f97a5a0044966f094538092e1db9e7b9c0e5a4e9e4e9e4e9e4e9e",
+    "side": "BUY",
+    "signatureType": 1,
+    "size": 10.0,
+    "tickSize": "0.01",
+    "timestamp": 1700000000,
+    "tokenId": "4738542302108129612856912335517660352849664845664685440963190764720214313804"
+  },
+  "name": "clob_order_v2_proxy_limit_buy_gtc",
+  "schema": "polymarket-client-golden-vectors/v1"
+}

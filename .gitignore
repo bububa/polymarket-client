@@ -29,3 +29,5 @@ test
 config.toml
 .vim
 .idea
+.venv-golden
+mise.toml

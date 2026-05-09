@@ -1,12 +1,18 @@
 package clob
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/bububa/polymarket-client/relayer"
+)
 
 const (
 	MainnetHost = "https://clob.polymarket.com"
 	V2Host      = "https://clob-v2.polymarket.com"
 	AmoyHost    = "https://clob-v2.polymarket.com"
 
+	// PolygonChainID is Polygon mainnet, the only chain currently listed by
+	// Polymarket's official contract-address documentation.
 	PolygonChainID = 137
 	AmoyChainID    = 80002
 
@@ -591,13 +597,18 @@ type CancelOrdersResponse struct {
 	NotCanceled map[string]string `json:"not_canceled"`
 }
 
-// BalanceAllowanceParams filters balance and allowance queries.
+// BalanceAllowanceParams identifies the asset whose balance/allowance cache
+// should be refreshed by CLOB.
+//
+// For deposit wallet / POLY_1271, set SignatureType to SignatureTypePoly1271.
+// CONDITIONAL assets require TokenID.
 type BalanceAllowanceParams struct {
 	// AssetType specifies collateral or conditional.
 	AssetType AssetType `json:"asset_type" url:"asset_type"`
 	// TokenID is the conditional token (required for conditional assets).
 	TokenID string `json:"token_id,omitempty" url:"token_id,omitempty"`
-	// SignatureType identifies the signature method.
+	// SignatureType selects the wallet/funder type for balance/allowance lookup/update.
+	// For deposit wallet / POLY_1271, set SignatureTypePoly1271.
 	SignatureType SignatureType `json:"signature_type,omitempty" url:"signature_type,omitempty"`
 }
 
@@ -883,4 +894,43 @@ type RfqQuote struct {
 	SizeOut Float64 `json:"sizeOut"`
 	// Price is the quoted price.
 	Price Float64 `json:"price"`
+}
+
+// DepositWalletBatchArgs contains input for building a signed WALLET batch relayer request.
+//
+// WALLET batches are used by deposit wallets for approvals, transfers,
+// withdrawals, splits, merges, and other wallet-level calls.
+type DepositWalletBatchArgs struct {
+	// From is the owner address. If empty, the client's signer address is used.
+	From string
+	// Factory optionally overrides Contracts(chainID).DepositWalletFactory.
+	// Leave empty for normal chain-aware behavior.
+	Factory string
+	// DepositWallet is the deterministic deposit wallet address. Required.
+	DepositWallet string
+	// Nonce is the WALLET nonce. If empty, BuildDepositWalletBatchRelayerRequest
+	// fetches it from the configured relayer using type=WALLET.
+	Nonce string
+	// Deadline is the Unix timestamp after which the batch is invalid. Required.
+	Deadline string
+	// Calls are the wallet calls executed by the batch.
+	Calls []relayer.DepositWalletCall
+	// Metadata is optional caller-provided relayer metadata.
+	Metadata string
+}
+
+// DepositWalletCTFArgs contains deposit-wallet WALLET batch options for a CTF transaction.
+type DepositWalletCTFArgs struct {
+	// From is the owner address. If empty, the client's signer address is used.
+	From string
+	// Factory optionally overrides Contracts(chainID).DepositWalletFactory.
+	Factory string
+	// DepositWallet is the deterministic deposit wallet address. Required.
+	DepositWallet string
+	// Nonce is the WALLET nonce. If empty, the client fetches it from the relayer.
+	Nonce string
+	// Deadline is the Unix timestamp after which the batch is invalid. Required.
+	Deadline string
+	// Metadata is optional caller-provided relayer metadata.
+	Metadata string
 }

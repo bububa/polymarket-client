@@ -74,6 +74,12 @@ func computeOrderAmounts(price, size string, side Side) (makerAmount, takerAmoun
 //
 // We ceil the takerAmount so the implied execution price never worsens the user's worstPrice,
 // while matching CLOB market-order precision requirements.
+//
+// py-clob-client-v2 rounds market order amounts using its v2 builder rules.
+// This Go client keeps a more conservative worst-price protection for market orders,
+// which may produce slightly larger takerAmount for BUY or different takerAmount for SELL.
+// As a result, market order signatures are not expected to match py-clob-client-v2
+// golden vectors byte-for-byte.
 func computeMarketOrderAmounts(price, amount string, side Side) (makerAmount, takerAmount string, err error) {
 	p, err := parseRat(price, "price")
 	if err != nil {

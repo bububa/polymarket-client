@@ -16,14 +16,17 @@ type OrderArgsV2 struct {
 	Expiration    string
 	SignatureType *SignatureType
 
-	// Maker is the funder/proxy/safe wallet address that owns the order.
-	// If empty, SignOrder defaults maker to the signer address.
+	// Maker is the wallet address that owns/funds the order.
 	//
 	// EOA:
 	//   Maker may be empty, or equal to signer address.
 	//
 	// POLY_PROXY / POLY_GNOSIS_SAFE:
 	//   Maker should be the funder/proxy/safe address associated with the API key.
+	//
+	// POLY_1271:
+	//   Maker must be the deposit wallet address. BuildOrder sets order.Signer to
+	//   the same deposit wallet address before signing.
 	Maker string
 
 	BuilderCode string
@@ -39,8 +42,17 @@ type MarketOrderArgsV2 struct {
 	Side          Side
 	SignatureType *SignatureType
 
-	// Maker is the funder/proxy/safe wallet address that owns the order.
-	// If empty, SignOrder defaults maker to the signer address.
+	// Maker is the wallet address that owns/funds the order.
+	//
+	// EOA:
+	//   Maker may be empty, or equal to signer address.
+	//
+	// POLY_PROXY / POLY_GNOSIS_SAFE:
+	//   Maker should be the funder/proxy/safe address associated with the API key.
+	//
+	// POLY_1271:
+	//   Maker must be the deposit wallet address. BuildMarketOrder sets
+	//   order.Signer to the same deposit wallet address before signing.
 	Maker string
 
 	BuilderCode string
@@ -101,6 +113,8 @@ func (b *OrderBuilder) BuildOrder(args OrderArgsV2, opts CreateOrderOptions) (*S
 		order.Expiration = String(args.Expiration)
 	}
 
+	applyOrderBuilderSignatureShape(order)
+
 	if err := b.client.SignOrder(order, WithSignOrderNegRisk(opts.NegRisk)); err != nil {
 		return nil, err
 	}
@@ -131,6 +145,8 @@ func (b *OrderBuilder) BuildMarketOrder(args MarketOrderArgsV2, opts CreateOrder
 		Builder:       args.BuilderCode,
 		Metadata:      args.Metadata,
 	}
+
+	applyOrderBuilderSignatureShape(order)
 
 	if err := b.client.SignOrder(order, WithSignOrderNegRisk(opts.NegRisk)); err != nil {
 		return nil, err
@@ -310,4 +326,13 @@ func validatePriceRange(price string, allowOne bool) error {
 		return fmt.Errorf("polymarket: price must be <= 1, got %s", price)
 	}
 	return nil
+}
+
+func applyOrderBuilderSignatureShape(order *SignedOrder) {
+	if order == nil {
+		return
+	}
+	if order.SignatureType == SignatureTypePoly1271 && order.Maker != "" && order.Signer == "" {
+		order.Signer = order.Maker
+	}
 }

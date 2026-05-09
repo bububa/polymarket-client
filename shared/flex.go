@@ -252,6 +252,19 @@ func (t Time) MarshalJSON() ([]byte, error) {
 	return json.Marshal(t.Time().Format(time.RFC3339Nano))
 }
 
+func (t Time) MarshalBinary() ([]byte, error) {
+	return t.Time().MarshalBinary()
+}
+
+func (t *Time) UnmarshalBinary(data []byte) error {
+	var tt time.Time
+	if err := tt.UnmarshalBinary(data); err != nil {
+		return err
+	}
+	*t = Time(tt)
+	return nil
+}
+
 func (t Time) Time() time.Time {
 	return time.Time(t)
 }
@@ -290,6 +303,19 @@ func (d Date) MarshalJSON() ([]byte, error) {
 		return []byte("null"), nil
 	}
 	return json.Marshal(d.Time().Format("2006-01-02"))
+}
+
+func (d Date) MarshalBinary() ([]byte, error) {
+	return d.Time().MarshalBinary()
+}
+
+func (d *Date) UnmarshalBinary(data []byte) error {
+	var tt time.Time
+	if err := tt.UnmarshalBinary(data); err != nil {
+		return err
+	}
+	*d = Date(tt)
+	return nil
 }
 
 func (d Date) Time() time.Time {

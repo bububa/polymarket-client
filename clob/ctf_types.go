@@ -91,8 +91,6 @@ func RedeemBinary(collateral common.Address, conditionID common.Hash) RedeemPosi
 type RedeemNegRiskRequest struct {
 	// ConditionID is the resolved neg-risk condition ID.
 	ConditionID common.Hash
-	// Amounts contains the per-index-set amounts expected by the neg-risk adapter.
-	Amounts []*big.Int
 }
 
 // TxReceipt is the minimal transaction receipt returned by CTF helpers.
@@ -126,8 +124,10 @@ type RelayerCTFRequest struct {
 	// Signature is the 0x-prefixed Safe or proxy transaction signature.
 	Signature string
 	// SignatureParams are Safe transaction parameters.
-	SignatureParams relayer.SignatureParams
-	// Type is the relayer transaction type, typically SAFE or PROXY.
+	SignatureParams *relayer.SignatureParams
+	// Type selects SAFE or PROXY relayer signing.
+	// Deposit wallet WALLET transactions are intentionally handled by
+	// CTFDepositWalletTransactionRequest instead.
 	Type relayer.NonceType
 	// Metadata is optional caller-provided transaction metadata.
 	Metadata string

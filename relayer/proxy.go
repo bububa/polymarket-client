@@ -17,8 +17,9 @@ import (
 )
 
 const (
-	proxyFactoryPolygon = "0xaB45c5A4B0c941a2F231C04C3f49182e1A254052"
-	relayHubPolygon     = "0xD216153c06E857cD7f72665E0aF1d7D82172F494"
+	proxyFactoryPolygon            = "0xaB45c5A4B0c941a2F231C04C3f49182e1A254052"
+	relayHubPolygon                = "0xD216153c06E857cD7f72665E0aF1d7D82172F494"
+	proxySubmitTransactionSelector = "0x34ee9791"
 )
 
 const (
@@ -53,20 +54,20 @@ func EncodeProxyTransactionData(txs []ProxyTransaction) (string, error) {
 	}
 
 	arrayT, err := abi.NewType("tuple[]", "", []abi.ArgumentMarshaling{
-		{Name: "to", Type: "address"},
 		{Name: "typeCode", Type: "uint8"},
-		{Name: "data", Type: "bytes"},
+		{Name: "to", Type: "address"},
 		{Name: "value", Type: "uint256"},
+		{Name: "data", Type: "bytes"},
 	})
 	if err != nil {
 		return "", err
 	}
 
 	type proxyTuple struct {
-		To       common.Address
 		TypeCode uint8
-		Data     []byte
+		To       common.Address
 		Value    *big.Int
+		Data     []byte
 	}
 
 	values := make([]proxyTuple, 0, len(txs))
@@ -107,12 +108,13 @@ func EncodeProxyTransactionData(txs []ProxyTransaction) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("relayer: encode proxy transaction data: %w", err)
 	}
-
-	return hexutil.Encode(encoded), nil
+	encodedData := hexutil.Encode(encoded)
+	encodedData = proxySubmitTransactionSelector + encodedData[2:]
+	return encodedData, nil
 }
 
-// BuildProxySubmitTransactionRequest builds and signs a PROXY relayer submit request.
-func (c *Client) BuildProxySubmitTransactionRequest(
+// ProxySubmitTransactionRequest builds and signs a PROXY relayer submit request.
+func (c *Client) ProxySubmitTransactionRequest(
 	ctx context.Context,
 	signer *polyauth.Signer,
 	req *ProxySubmitTransactionArgs,
@@ -206,7 +208,7 @@ func (c *Client) BuildProxySubmitTransactionRequest(
 		Data:        data,
 		Nonce:       relayPayload.Nonce.String(),
 		Signature:   signature,
-		SignatureParams: SignatureParams{
+		SignatureParams: &SignatureParams{
 			GasPrice:   gasPrice,
 			GasLimit:   gasLimit,
 			RelayerFee: relayerFee,

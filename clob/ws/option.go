@@ -1,6 +1,8 @@
 package ws
 
 import (
+	"time"
+
 	"github.com/bububa/polymarket-client/clob"
 	"github.com/coder/websocket"
 )
@@ -10,6 +12,12 @@ type Option func(*Client)
 func WithHost(host string) Option {
 	return func(clt *Client) {
 		clt.host = host
+	}
+}
+
+func WithSportsHost(host string) Option {
+	return func(clt *Client) {
+		clt.sportsHost = host
 	}
 }
 
@@ -29,6 +37,14 @@ func WithCredentials(cred *clob.Credentials) Option {
 func WithAutoReconnect(v bool) Option {
 	return func(clt *Client) {
 		clt.autoReconnect = v
+	}
+}
+
+// WithHeartbeatInterval sets the text PING interval for Market/User channels.
+// Set interval <= 0 to disable heartbeat.
+func WithHeartbeatInterval(interval time.Duration) Option {
+	return func(clt *Client) {
+		clt.heartbeatInterval = interval
 	}
 }
 

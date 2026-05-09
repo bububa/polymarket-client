@@ -15,6 +15,7 @@ import (
 
 	"github.com/bububa/polymarket-client/internal/polyauth"
 	"github.com/bububa/polymarket-client/relayer"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 var errMissingIdentifier = errors.New("polymarket: missing identifier on output value")
@@ -33,6 +34,10 @@ type Client struct {
 // RelayerSubmitter is the relayer capability used by CLOB CTF helpers.
 type RelayerSubmitter interface {
 	SubmitTransaction(context.Context, *relayer.SubmitTransactionRequest, *relayer.SubmitTransactionResponse) error
+}
+
+type RelayerNonceGetter interface {
+	GetNonce(context.Context, *relayer.NonceResponse, ...relayer.NonceType) error
 }
 
 type ProxyRelayerBuilder interface {
@@ -482,6 +487,16 @@ func (c *Client) GetBalanceAllowance(ctx context.Context, params BalanceAllowanc
 // UpdateBalanceAllowance updates the user's approved token allowance for trading.
 // Requires L2 auth.
 func (c *Client) UpdateBalanceAllowance(ctx context.Context, params BalanceAllowanceParams, out *BalanceAllowanceResponse) error {
+	if params.AssetType == "" {
+		return fmt.Errorf("polymarket: asset_type is required")
+	}
+	if params.AssetType != AssetCollateral && params.AssetType != AssetConditional {
+		return fmt.Errorf("polymarket: unsupported asset_type %q", params.AssetType)
+	}
+	if params.AssetType == AssetConditional && strings.TrimSpace(params.TokenID) == "" {
+		return fmt.Errorf("polymarket: token_id is required for CONDITIONAL balance allowance update")
+	}
+
 	return c.do(ctx, http.MethodPost, "/balance-allowance/update", nil, params, 2, out)
 }
 
@@ -797,6 +812,25 @@ func (c *Client) ResolveSignatureType(signatureType *SignatureType) SignatureTyp
 		return *c.defaultSignatureType
 	}
 	return SignatureTypeEOA
+}
+
+func (c *Client) defaultCollateralToken() (common.Address, error) {
+	return c.contractAddress(func(cc ContractConfig) common.Address { return cc.Collateral })
+}
+
+func (c *Client) NormalizeCollateralToken(collateral common.Address) (common.Address, error) {
+	if collateral != (common.Address{}) {
+		return collateral, nil
+	}
+
+	defaultCollateral, err := c.defaultCollateralToken()
+	if err != nil {
+		return common.Address{}, err
+	}
+	if defaultCollateral == (common.Address{}) {
+		return common.Address{}, fmt.Errorf("polymarket: collateral token is not configured for chain %d", c.auth.ChainID)
+	}
+	return defaultCollateral, nil
 }
 
 func values(v any) url.Values {

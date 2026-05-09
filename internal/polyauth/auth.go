@@ -56,9 +56,20 @@ func SignTypedData(signer *Signer, typedData apitypes.TypedData) (string, error)
 	if err != nil {
 		return "", fmt.Errorf("build typed data digest: %w", err)
 	}
+	return SignHash(signer, digest)
+}
+
+// SignHash signs a 32-byte digest and returns a 0x-prefixed Ethereum signature.
+func SignHash(signer *Signer, digest []byte) (string, error) {
+	if signer == nil {
+		return "", fmt.Errorf("signer is nil")
+	}
+	if len(digest) != 32 {
+		return "", fmt.Errorf("digest must be 32 bytes, got %d", len(digest))
+	}
 	signature, err := crypto.Sign(digest, signer.key)
 	if err != nil {
-		return "", fmt.Errorf("sign typed data: %w", err)
+		return "", fmt.Errorf("sign hash: %w", err)
 	}
 	signature[64] += 27
 	return "0x" + hex.EncodeToString(signature), nil

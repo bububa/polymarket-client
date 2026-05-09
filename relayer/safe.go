@@ -31,8 +31,8 @@ var (
 	safeDomainTypeHash = crypto.Keccak256Hash([]byte("EIP712Domain(uint256 chainId,address verifyingContract)"))
 )
 
-// BuildSafeSubmitTransactionRequest builds and signs a SAFE relayer submit request.
-func (c *Client) BuildSafeSubmitTransactionRequest(
+// SafeSubmitTransactionRequest builds and signs a SAFE relayer submit request.
+func (c *Client) SafeSubmitTransactionRequest(
 	ctx context.Context,
 	signer *polyauth.Signer,
 	req *SafeSubmitTransactionArgs,
@@ -133,7 +133,7 @@ func (c *Client) BuildSafeSubmitTransactionRequest(
 		Data:        normalizeHex(tx.Data),
 		Nonce:       relayPayload.Nonce.String(),
 		Signature:   packedSig,
-		SignatureParams: SignatureParams{
+		SignatureParams: &SignatureParams{
 			GasPrice:       gasPrice,
 			Operation:      fmt.Sprintf("%d", tx.Operation),
 			SafeTxGas:      safeTxGas,
