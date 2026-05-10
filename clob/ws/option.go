@@ -48,6 +48,23 @@ func WithHeartbeatInterval(interval time.Duration) Option {
 	}
 }
 
+// WithStaleTimeout enables stale stream detection.
+// When enabled, the client forces a reconnect if no message is received for the
+// given duration. Set timeout <= 0 to disable it.
+func WithStaleTimeout(timeout time.Duration) Option {
+	return func(clt *Client) {
+		clt.staleTimeout = timeout
+	}
+}
+
+// WithStaleCheckInterval sets how often stale stream detection runs.
+// Set interval <= 0 to use a default derived from WithStaleTimeout.
+func WithStaleCheckInterval(interval time.Duration) Option {
+	return func(clt *Client) {
+		clt.staleCheckInterval = interval
+	}
+}
+
 // WithOnConnected sets a callback fired when the WebSocket first connects.
 func WithOnConnected(fn func()) Option {
 	return func(clt *Client) {

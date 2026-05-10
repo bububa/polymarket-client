@@ -51,20 +51,28 @@ Polymarket returns prices as decimal strings (`"0.50"`). Use `shared.Float64` or
 
 ## WebSocket
 
-### "connection lost" — no auto-reconnect
+### Connection drops and reconnects
 
-This is intentional. On `ErrConnectionLost`, close the client, create a new one, and re-subscribe.
+`clob/ws` auto-reconnects by default and replays stored subscriptions. Read asynchronous errors from `client.Errors()` so reconnect problems are visible to your application.
 
-### No updates after subscription
-
-Call `wsClient.Read()` in a goroutine after subscribing:
+Disable reconnect only if you want to own the lifecycle yourself:
 
 ```go
-go func() {
-    err := wsClient.Read()
-    // handle error/reconnect
-}()
+client := ws.New(ws.WithAutoReconnect(false))
 ```
+
+### Socket stays open but no messages arrive
+
+Enable stale detection if your application prefers a forced reconnect after a quiet period:
+
+```go
+client := ws.New(
+    ws.WithStaleTimeout(2*time.Minute),
+    ws.WithStaleCheckInterval(10*time.Second),
+)
+```
+
+Any non-empty message, including heartbeat messages, refreshes the stale timer.
 
 ## Build Issues
 

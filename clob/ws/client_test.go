@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -152,6 +153,101 @@ func TestClientSendsTextKeepAlive(t *testing.T) {
 	case err := <-client.Errors():
 		t.Fatalf("unexpected error: %v", err)
 	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+func TestStaleDetectionForcesReconnectAndReplaysSubscriptions(t *testing.T) {
+	gotInitialSub := make(chan MarketSubscription, 1)
+	gotReplaySub := make(chan MarketSubscription, 1)
+	var connCount atomic.Int64
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{})
+		if err != nil {
+			t.Errorf("accept: %v", err)
+			return
+		}
+		defer conn.Close(websocket.StatusNormalClosure, "")
+
+		ctx := context.Background()
+		var sub MarketSubscription
+		if err := wsjson.Read(ctx, conn, &sub); err != nil {
+			t.Errorf("read subscription: %v", err)
+			return
+		}
+
+		if connCount.Add(1) == 1 {
+			gotInitialSub <- sub
+			time.Sleep(200 * time.Millisecond)
+			return
+		}
+
+		gotReplaySub <- sub
+		event := BookEvent{
+			BaseEvent: BaseEvent{EventType: EventTypeBook},
+			AssetID:   "asset-1",
+			Bids:      []clob.OrderSummary{{Price: clob.Float64(0.45), Size: clob.Float64(10)}},
+			Asks:      []clob.OrderSummary{{Price: clob.Float64(0.55), Size: clob.Float64(20)}},
+			Timestamp: shared.TimeFromUnixMilli(1700000000000),
+		}
+		if err := wsjson.Write(ctx, conn, []BookEvent{event}); err != nil {
+			t.Errorf("write event: %v", err)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}))
+	defer server.Close()
+
+	url := "ws" + strings.TrimPrefix(server.URL, "http")
+	client := New(
+		WithHost(url),
+		WithHeartbeatInterval(0),
+		WithStaleTimeout(40*time.Millisecond),
+		WithStaleCheckInterval(10*time.Millisecond),
+	)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := client.ConnectMarket(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	if err := client.SubscribeOrderBook(ctx, []string{"asset-1"}); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case sub := <-gotInitialSub:
+		if len(sub.AssetIDs) != 1 || sub.AssetIDs[0] != "asset-1" {
+			t.Fatalf("unexpected initial subscription: %#v", sub)
+		}
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for initial subscription")
+	}
+
+	select {
+	case sub := <-gotReplaySub:
+		if len(sub.AssetIDs) != 1 || sub.AssetIDs[0] != "asset-1" {
+			t.Fatalf("unexpected replay subscription: %#v", sub)
+		}
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for replay subscription")
+	}
+
+	for {
+		select {
+		case raw := <-client.Events():
+			event, ok := raw.(*BookEvent)
+			if !ok {
+				t.Fatalf("event type = %T, want *BookEvent", raw)
+			}
+			if event.AssetID != "asset-1" {
+				t.Fatalf("AssetID = %q, want asset-1", event.AssetID)
+			}
+			return
+		case <-client.Errors():
+		case <-ctx.Done():
+			t.Fatal("timed out waiting for replayed event")
+		}
 	}
 }
 

@@ -30,6 +30,9 @@ outline: deep
 
 ### Additions
 
+- **WebSocket stale detection** — `ws.WithStaleTimeout` and
+  `ws.WithStaleCheckInterval` can force reconnect when a socket remains open
+  but stops receiving messages
 - **`clob.OrderBuilder`** — high-level API for constructing and posting V2 orders
   with automatic tick-size validation, price-range checks, and neg-risk detection
 - **`BuildOrderForToken` / `CreateAndPostOrderForToken`** — convenience methods

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add opt-in WebSocket stale detection via `ws.WithStaleTimeout` and `ws.WithStaleCheckInterval`; stale connections force reconnect and reuse existing subscription replay.
+
 ## [v1.0.1] - 2026-04-25
 
 ### Changed

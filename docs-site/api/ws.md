@@ -33,6 +33,9 @@ client := ws.New(
 | `WithDialOptions(opts)` | Pass custom `*websocket.DialOptions` (headers, subprotocols, etc.) |
 | `WithCredentials(creds)` | Set L2 API credentials for user-channel subscriptions |
 | `WithAutoReconnect(bool)` | Enable/disable automatic reconnect on read error (default: `true`) |
+| `WithHeartbeatInterval(interval)` | Set client text `PING` interval for CLOB WebSocket channels (default: `10s`; `<=0` disables it) |
+| `WithStaleTimeout(timeout)` | Force reconnect when no WebSocket message is received for `timeout` (default: disabled) |
+| `WithStaleCheckInterval(interval)` | Set how often stale detection checks the active connection |
 | `WithOnConnected(fn)` | Callback fired once on first successful connection |
 | `WithOnReconnected(fn)` | Callback fired on each successful reconnect |
 | `WithOnDisconnected(fn)` | Callback fired when connection drops with no reconnect pending |
@@ -79,7 +82,7 @@ for event := range client.Events() {
     switch e := event.(type) {
     case *ws.BookEvent:
         // Order book snapshot: e.Bids, e.Asks
-    case *ws.PriceEvent:
+    case *ws.PriceChangeEvent:
         // Price update: e.AssetID, e.Price
     case *ws.OrderEvent:
         // Order fill or status change
@@ -107,6 +110,19 @@ client := ws.New(
 
 The client auto-reconnects with exponential backoff (1 s → 2 s → 4 s → ... → 60 s cap).  
 Subscriptions are automatically replayed on each successful reconnect.
+
+## Stale Connection Detection
+
+Some WebSocket failures leave the socket open but stop delivering messages. Stale detection is disabled by default; enable it when your application prefers forced reconnect over waiting indefinitely:
+
+```go
+client := ws.New(
+    ws.WithStaleTimeout(2*time.Minute),
+    ws.WithStaleCheckInterval(10*time.Second),
+)
+```
+
+Any successfully read non-empty WebSocket message, including heartbeat messages, refreshes the stale timer. If no message is received for the configured timeout, the client closes the current connection, reconnects if auto-reconnect is enabled, and replays subscriptions.
 
 ## Closing
 

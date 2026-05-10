@@ -67,6 +67,8 @@ client := ws.New(
 )
 ```
 
+`WithOnDisconnected` is not fired for reconnectable drops while auto-reconnect is enabled. Use `WithOnReconnected` and `Errors()` for reconnect monitoring.
+
 ## Auto-Reconnect
 
 By default the client reconnects with exponential backoff:
@@ -86,6 +88,19 @@ Disable auto-reconnect:
 ```go
 client := ws.New(ws.WithAutoReconnect(false))
 ```
+
+## Stale Detection
+
+Auto-reconnect handles read failures. To also recover from a socket that remains open but stops receiving messages, enable stale detection:
+
+```go
+client := ws.New(
+    ws.WithStaleTimeout(2*time.Minute),
+    ws.WithStaleCheckInterval(10*time.Second),
+)
+```
+
+Stale detection is disabled by default. Any non-empty message read from the socket, including heartbeat messages, refreshes the stale timer. If no message arrives before the timeout, the client closes the active connection and uses the normal reconnect path.
 
 ## Custom Dial Options
 

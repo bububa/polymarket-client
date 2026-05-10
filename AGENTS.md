@@ -36,6 +36,23 @@ Golden-vector generation uses Python and the official `py-clob-client-v2` refere
 | `internal/polyhttp/` | HTTP client with `AuthLevel` (`0=None`, `1=L1`, `2=L2`)                            | —                   |
 | `internal/polyauth/` | EIP-712 signing, L1/L2 header generation, low-level hash signing                   | —                   |
 
+## WebSocket Reliability
+
+`clob/ws` automatically reconnects on read failures when `WithAutoReconnect(true)` is active (the default) and replays stored subscriptions after reconnect.
+
+Market/User channels use client text `PING` by default via `WithHeartbeatInterval`; server `PING`/`ping` frames are answered with text `pong`.
+
+Optional stale detection is opt-in:
+
+```go
+client := ws.New(
+    ws.WithStaleTimeout(2*time.Minute),
+    ws.WithStaleCheckInterval(10*time.Second),
+)
+```
+
+`WithStaleTimeout` forces reconnect when no WebSocket message is received for the configured duration. Any successfully read non-empty message, including heartbeat messages, refreshes the stale timer. Keep it disabled by default because quiet subscriptions can legitimately have long gaps.
+
 ## Client Construction Pattern
 
 All public packages use `NewClient(host, opts...)` with functional options:

@@ -16,7 +16,7 @@ graph TB
         DATA["Data API\ndata-api.polymarket.com\nPositions, trades, activity"]
         GAMMA["Gamma API\ngamma-api.polymarket.com\nMarkets, events, search"]
         BRIDGE["Bridge API\nbridge-api.polymarket.com\nCross-chain bridging"]
-        WS["WebSocket\nws-orderbook.clob.polymarket.com\nLive order updates"]
+        WS["WebSocket\nws-subscriptions-clob.polymarket.com\nMarket and user streams"]
     end
 
     subgraph "Blockchain"
@@ -235,11 +235,12 @@ stateDiagram-v2
     Receiving --> Receiving: order fill
     Receiving --> Receiving: order status change
     Receiving --> Reconnecting: connection lost
+    Receiving --> Reconnecting: stale timeout
     Reconnecting --> Subscribing: reconnected
     Disconnected --> [*]
 ```
 
-The WebSocket client (`clob/ws`) uses gorilla/websocket internally, maintains a read loop in a goroutine, and channels updates to the caller via `client.Channel`. Reconnection is not automatic — the caller must handle `ErrConnectionLost` and re-subscribe.
+The WebSocket client (`clob/ws`) uses `github.com/coder/websocket`, maintains a read loop in a goroutine, and sends decoded updates through `client.Events()`. Reconnection is automatic by default with exponential backoff, and stored subscriptions are replayed after each successful reconnect. Optional stale detection can force reconnect when the socket stays open but no messages arrive before the configured timeout.
 
 ## CLOB–Relayer Integration
 

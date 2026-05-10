@@ -35,16 +35,19 @@ type Client struct {
 	dialOpts *websocket.DialOptions
 	creds    *clob.Credentials
 
-	conn              *atomic.Pointer[websocket.Conn]
-	closed            *atomic.Bool
-	connected         *atomic.Bool
-	ctx               context.Context
-	cancel            context.CancelFunc
-	events            chan Event
-	errs              chan error
-	autoReconnect     bool
-	heartbeatInterval time.Duration
-	reconnecting      *atomic.Bool
+	conn               *atomic.Pointer[websocket.Conn]
+	closed             *atomic.Bool
+	connected          *atomic.Bool
+	ctx                context.Context
+	cancel             context.CancelFunc
+	events             chan Event
+	errs               chan error
+	autoReconnect      bool
+	heartbeatInterval  time.Duration
+	staleTimeout       time.Duration
+	staleCheckInterval time.Duration
+	lastDataAt         *atomic.Int64
+	reconnecting       *atomic.Bool
 
 	onConnected    Callback
 	onReconnected  Callback
@@ -84,6 +87,7 @@ func New(opts ...Option) *Client {
 
 		url:          atomic.NewString(""),
 		conn:         atomic.NewPointer[websocket.Conn](nil),
+		lastDataAt:   atomic.NewInt64(0),
 		connected:    atomic.NewBool(false),
 		reconnecting: atomic.NewBool(false),
 		closed:       atomic.NewBool(false),
@@ -149,6 +153,10 @@ func (c *Client) connect(ctx context.Context, url string) error {
 	go c.readLoop(c.ctx, conn)
 	if c.heartbeatInterval > 0 {
 		go c.heartbeat(c.ctx, conn)
+	}
+	if c.staleTimeout > 0 {
+		c.markDataActive()
+		go c.staleWatchdog(c.ctx, conn)
 	}
 	c.replaySubscriptions(ctx)
 	return nil
@@ -372,6 +380,9 @@ func (c *Client) readLoop(ctx context.Context, conn *websocket.Conn) {
 			c.scheduleReconnect(conn)
 			return
 		}
+		if len(bytes.TrimSpace(data)) > 0 {
+			c.markDataActive()
+		}
 		if bytes.EqualFold(data, []byte("PONG")) {
 			continue
 		} else if bytes.EqualFold(data, []byte("PING")) {
@@ -388,7 +399,8 @@ func (c *Client) readLoop(ctx context.Context, conn *websocket.Conn) {
 			}
 			continue
 		}
-		for _, event := range decodeEvents(data) {
+		events := decodeEvents(data)
+		for _, event := range events {
 			if event.err != nil {
 				c.sendErr(event.err)
 				continue
@@ -400,6 +412,56 @@ func (c *Client) readLoop(ctx context.Context, conn *websocket.Conn) {
 			}
 		}
 	}
+}
+
+func (c *Client) staleWatchdog(ctx context.Context, conn *websocket.Conn) {
+	if c.staleTimeout <= 0 {
+		return
+	}
+	interval := c.staleCheckInterval
+	if interval <= 0 {
+		interval = defaultStaleCheckInterval(c.staleTimeout)
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if c.conn.Load() != conn {
+				return
+			}
+			last := c.lastDataAt.Load()
+			if last == 0 {
+				continue
+			}
+			if age := time.Since(time.Unix(0, last)); age > c.staleTimeout {
+				c.sendErr(fmt.Errorf("polymarket: websocket stale: no messages for %s", c.staleTimeout))
+				_ = conn.CloseNow()
+				c.scheduleReconnect(conn)
+				return
+			}
+		}
+	}
+}
+
+func (c *Client) markDataActive() {
+	c.lastDataAt.Store(time.Now().UnixNano())
+}
+
+func defaultStaleCheckInterval(timeout time.Duration) time.Duration {
+	interval := timeout / 2
+	if interval <= 0 {
+		return timeout
+	}
+	if interval < time.Second {
+		return interval
+	}
+	if interval > 30*time.Second {
+		return 30 * time.Second
+	}
+	return interval
 }
 
 func (c *Client) heartbeat(ctx context.Context, conn *websocket.Conn) {

@@ -11,7 +11,7 @@
 ## Features
 
 - **Complete CLOB v2 coverage** — market data, order management, positions, RFQ (request-for-quote), rewards, builder APIs
-- **WebSocket support** — live order book, price streams, and user order/trade events with auto-reconnect
+- **WebSocket support** — live order book, price streams, and user order/trade events with auto-reconnect, subscription replay, heartbeat handling, and optional stale-connection detection
 - **Three-tier auth** — public (no auth), L1 (EIP-712 signatures), L2 (API key + passphrase + wallet signature)
 - **All Polymarket APIs** — CLOB, Relayer, Data, Gamma, Bridge
 - **Deposit wallet support** — `POLY_1271` CLOB order signing, balance/allowance updates, `WALLET-CREATE`, `WALLET` batch requests, and CTF helpers
@@ -571,8 +571,10 @@ For lower-level control, `CTFDepositWalletTransactionRequest` can wrap an alread
 import "github.com/bububa/polymarket-client/clob/ws"
 
 wsClient := ws.New(
-    ws.WithHost(""), // defaults to production
     ws.WithAutoReconnect(true),
+    // Optional: force reconnect if no WebSocket message is received for 2 minutes
+    ws.WithStaleTimeout(2*time.Minute),
+    ws.WithStaleCheckInterval(10*time.Second),
     // Optional: auth for user-channel subscriptions
     ws.WithCredentials(&clob.Credentials{
         Key:        "your-api-key",
@@ -610,6 +612,8 @@ for err := range wsClient.Errors() {
 **User subscriptions** (auth required, via `ConnectUser`): `SubscribeUserEvents`, `SubscribeOrders`, `SubscribeTrades`.
 
 Each subscribe method accepts `ctx context.Context` and a slice of asset IDs (market) or market condition IDs (user).
+
+The client automatically reconnects on read failures with exponential backoff and replays stored subscriptions after each successful reconnect. Stale detection is disabled by default; enable `WithStaleTimeout` when you want the client to force reconnect a socket that stays open but stops receiving messages. Heartbeat messages count as received messages for stale detection.
 
 ### WebSocket Real-Time Data (`clob/ws/rtds`)
 
