@@ -597,3 +597,182 @@ func TestUpdateBalanceAllowanceOmitsDefaultSignatureType(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestRewardsUserEndpointsIncludeOfficialParams(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("method = %s", r.Method)
+		}
+		if r.URL.Query().Get("signature_type") != "2" {
+			t.Fatalf("signature_type query = %s", r.URL.RawQuery)
+		}
+		if r.URL.Query().Get("maker_address") != "0xmaker" {
+			t.Fatalf("maker_address query = %s", r.URL.RawQuery)
+		}
+
+		switch r.URL.Path {
+		case "/rewards/user":
+			if r.URL.Query().Get("date") != "2026-05-13" || r.URL.Query().Get("next_cursor") != "abc" {
+				t.Fatalf("user rewards query = %s", r.URL.RawQuery)
+			}
+			_, _ = w.Write([]byte(`{"data":[{"date":"2026-05-13 00:00:00+00","condition_id":"0xcond","asset_address":"0xasset","maker_address":"0xmaker","earnings":"0.12","asset_rate":"1"}],"next_cursor":"LTE="}`))
+		case "/rewards/user/total":
+			if r.URL.Query().Get("date") != "2026-05-13" {
+				t.Fatalf("total rewards query = %s", r.URL.RawQuery)
+			}
+			_, _ = w.Write([]byte(`[{"date":"2026-05-13 00:00:00+00","asset_address":"0xasset","maker_address":"0xmaker","earnings":"0.32","asset_rate":"1"}]`))
+		case "/rewards/user/percentages":
+			_, _ = w.Write([]byte(`{"0xcond":"0.38"}`))
+		case "/rewards/user/markets":
+			if r.URL.Query().Get("order_by") != "earning_percentage" || r.URL.Query().Get("page_size") != "500" {
+				t.Fatalf("markets query = %s", r.URL.RawQuery)
+			}
+			_, _ = w.Write([]byte(`{"data":[{"condition_id":"0xcond","question":"Q","market_slug":"m","event_slug":"e","rewards_max_spread":"0.035","rewards_min_size":"100","market_competitiveness":"4.2","spread":"0.01","volume_24hr":"1234","tokens":[{"token_id":"1","outcome":"YES","price":"0.5"}],"rewards_config":[{"asset_address":"0xasset","start_date":"2026-05-13","end_date":"2026-05-14","rate_per_day":"300","total_rewards":"300","total_days":"1"}],"maker_address":"0xmaker","earning_percentage":"0.38","earnings":[{"asset_address":"0xasset","earnings":"0.12","asset_rate":"1"}]}],"next_cursor":"LTE="}`))
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	client := NewClient(
+		srv.URL,
+		WithSigner(testKey()),
+		WithCredentials(Credentials{
+			Key:        "test-key",
+			Secret:     "c2VjcmV0",
+			Passphrase: "test-passphrase",
+		}),
+	)
+
+	var user Page[UserEarning]
+	if err := client.GetEarningsForUserForDayWithParams(context.Background(), UserRewardsParams{
+		Date:          "2026-05-13",
+		SignatureType: SignatureTypeGnosisSafe,
+		MakerAddress:  "0xmaker",
+		NextCursor:    "abc",
+	}, &user); err != nil {
+		t.Fatal(err)
+	}
+	if len(user.Data) != 1 || user.Data[0].ConditionID != "0xcond" {
+		t.Fatalf("unexpected user rewards: %+v", user)
+	}
+
+	var total []TotalUserEarning
+	if err := client.GetTotalEarningsForUserForDayWithParams(context.Background(), UserRewardsParams{
+		Date:          "2026-05-13",
+		SignatureType: SignatureTypeGnosisSafe,
+		MakerAddress:  "0xmaker",
+	}, &total); err != nil {
+		t.Fatal(err)
+	}
+	if len(total) != 1 || float64(total[0].Earnings) != 0.32 {
+		t.Fatalf("unexpected total rewards: %+v", total)
+	}
+
+	pct, err := client.GetRewardPercentagesWithParams(context.Background(), UserRewardsParams{
+		SignatureType: SignatureTypeGnosisSafe,
+		MakerAddress:  "0xmaker",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if float64(pct["0xcond"]) != 0.38 {
+		t.Fatalf("unexpected percentages: %+v", pct)
+	}
+
+	var markets Page[UserRewardsEarning]
+	if err := client.GetUserEarningsAndMarketsConfig(context.Background(), EarningsParams{
+		OrderBy:      "earning_percentage",
+		PageSize:     500,
+		MakerAddress: "0xmaker",
+	}, SignatureTypeGnosisSafe, &markets); err != nil {
+		t.Fatal(err)
+	}
+	if len(markets.Data) != 1 || float64(markets.Data[0].Spread) != 0.01 || float64(markets.Data[0].Volume24h) != 1234 {
+		t.Fatalf("unexpected markets: %+v", markets)
+	}
+}
+
+func TestRewardsMarketsMultiUsesOfficialParams(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/rewards/markets/multi" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+		q := r.URL.Query()
+		if q.Get("order_by") != "rate_per_day" ||
+			q.Get("position") != "DESC" ||
+			q.Get("page_size") != "50" ||
+			q.Get("max_spread") != "0.1" ||
+			q.Get("min_price") != "0.1" ||
+			q.Get("max_price") != "0.9" ||
+			q.Get("min_volume_24hr") != "1000" ||
+			q.Get("next_cursor") != "abc" {
+			t.Fatalf("query = %s", r.URL.RawQuery)
+		}
+		_, _ = w.Write([]byte(`{"data":[{"condition_id":"0xcond","question":"Q","market_slug":"m","event_slug":"e","rewards_max_spread":"0.035","rewards_min_size":"100","market_competitiveness":"4.2","neg_risk":true,"spread":"0.01","volume_24hr":"1234","end_date":"2026-05-14 00:00:00+00","sponsored_daily_rate":"200","native_daily_rate":"100","total_daily_rate":"300","sponsors_count":2,"tokens":[{"token_id":"1","outcome":"YES","price":"0.5","winner":false}],"rewards_config":[{"asset_address":"0xasset","start_date":"2026-05-13","end_date":"2026-05-14","rate_per_day":"300","total_rewards":"300","total_days":"1"}]}],"next_cursor":"LTE="}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL)
+	var out Page[MarketReward]
+	if err := client.GetRewardsMarketsMulti(context.Background(), RewardsMarketsParams{
+		OrderBy:      "rate_per_day",
+		Position:     "DESC",
+		PageSize:     50,
+		MaxSpread:    "0.1",
+		MinPrice:     "0.1",
+		MaxPrice:     "0.9",
+		MinVolume24h: "1000",
+		NextCursor:   "abc",
+	}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Data) != 1 ||
+		out.Data[0].ConditionID != "0xcond" ||
+		!out.Data[0].NegRisk ||
+		float64(out.Data[0].TotalDailyRate) != 300 ||
+		int(out.Data[0].SponsorsCount) != 2 ||
+		float64(out.Data[0].RewardsConfig[0].TotalDays) != 1 {
+		t.Fatalf("unexpected rewards markets: %+v", out)
+	}
+}
+
+func TestGetTotalEarningsForUserForDayAggregatesLegacyOutput(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/rewards/user/total" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+		if r.URL.Query().Get("date") != "2026-05-13" || r.URL.Query().Get("signature_type") != "2" {
+			t.Fatalf("query = %s", r.URL.RawQuery)
+		}
+		_, _ = w.Write([]byte(`[
+			{"date":"2026-05-13 00:00:00+00","asset_address":"0xasset1","maker_address":"0xmaker","earnings":"0.30","asset_rate":"1"},
+			{"date":"2026-05-13 00:00:00+00","asset_address":"0xasset2","maker_address":"0xmaker","earnings":"2","asset_rate":"0.50"}
+		]`))
+	}))
+	defer srv.Close()
+
+	client := NewClient(
+		srv.URL,
+		WithSigner(testKey()),
+		WithCredentials(Credentials{
+			Key:        "test-key",
+			Secret:     "c2VjcmV0",
+			Passphrase: "test-passphrase",
+		}),
+	)
+
+	var out UserEarning
+	if err := client.GetTotalEarningsForUserForDay(context.Background(), "2026-05-13", SignatureTypeGnosisSafe, &out); err != nil {
+		t.Fatal(err)
+	}
+	if float64(out.Earnings) != 1.3 {
+		t.Fatalf("earnings = %v, want 1.3", out.Earnings)
+	}
+	if out.AssetAddress != "" {
+		t.Fatalf("asset_address = %q, want empty for multi-asset aggregate", out.AssetAddress)
+	}
+	if float64(out.AssetRate) != 1 {
+		t.Fatalf("asset_rate = %v, want 1", out.AssetRate)
+	}
+}

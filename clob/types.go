@@ -661,7 +661,7 @@ type GeoblockResponse struct {
 // UserEarning records a maker's reward earning for one market asset.
 type UserEarning struct {
 	// Date is the earning date.
-	Date Date `json:"date"`
+	Date Time `json:"date"`
 	// ConditionID is the market condition identifier.
 	ConditionID string `json:"condition_id"`
 	// AssetAddress is the reward asset contract address.
@@ -669,6 +669,20 @@ type UserEarning struct {
 	// MakerAddress is the maker wallet address.
 	MakerAddress string `json:"maker_address"`
 	// Earnings is the total reward earned in USDC.
+	Earnings Float64 `json:"earnings"`
+	// AssetRate is the reward asset exchange rate.
+	AssetRate Float64 `json:"asset_rate"`
+}
+
+// TotalUserEarning records a maker's total reward earning for one reward asset.
+type TotalUserEarning struct {
+	// Date is the earning date.
+	Date Time `json:"date"`
+	// AssetAddress is the reward asset contract address.
+	AssetAddress string `json:"asset_address"`
+	// MakerAddress is the maker wallet address.
+	MakerAddress string `json:"maker_address"`
+	// Earnings is the total reward amount.
 	Earnings Float64 `json:"earnings"`
 	// AssetRate is the reward asset exchange rate.
 	AssetRate Float64 `json:"asset_rate"`
@@ -683,6 +697,8 @@ type UserRewardsEarning struct {
 	RewardsMaxSpread      Float64         `json:"rewards_max_spread"`
 	RewardsMinSize        Float64         `json:"rewards_min_size"`
 	MarketCompetitiveness Float64         `json:"market_competitiveness"`
+	Spread                Float64         `json:"spread"`
+	Volume24h             Float64         `json:"volume_24hr"`
 	Tokens                []Token         `json:"tokens"`
 	RewardsConfig         []RewardsConfig `json:"rewards_config"`
 	MakerAddress          string          `json:"maker_address"`
@@ -696,6 +712,7 @@ type RewardsConfig struct {
 	EndDate      Date    `json:"end_date"`
 	RatePerDay   Float64 `json:"rate_per_day"`
 	TotalRewards Float64 `json:"total_rewards"`
+	TotalDays    Float64 `json:"total_days"`
 }
 
 // MarketRewardsConfig describes the reward period for one market asset.
@@ -730,12 +747,38 @@ type Earning struct {
 type CurrentReward struct {
 	// ConditionID is the market condition identifier.
 	ConditionID string `json:"condition_id"`
+	// Question is the market question text.
+	Question string `json:"question"`
+	// MarketSlug is the URL-friendly market slug.
+	MarketSlug string `json:"market_slug"`
+	// EventSlug is the parent event slug.
+	EventSlug string `json:"event_slug"`
 	// RewardsConfig lists the active reward periods.
 	RewardsConfig []RewardsConfig `json:"rewards_config"`
 	// RewardsMaxSpread is the max spread to qualify for rewards.
 	RewardsMaxSpread Float64 `json:"rewards_max_spread"`
 	// RewardsMinSize is the minimum order size to qualify.
 	RewardsMinSize Float64 `json:"rewards_min_size"`
+	// MarketCompetitiveness indicates market saturation.
+	MarketCompetitiveness Float64 `json:"market_competitiveness"`
+	// Tokens lists the conditional outcome tokens.
+	Tokens []Token `json:"tokens"`
+	// NegRisk indicates a negative-risk market.
+	NegRisk bool `json:"neg_risk"`
+	// Spread is the current bid-ask spread.
+	Spread Float64 `json:"spread"`
+	// Volume24h is the 24h traded volume.
+	Volume24h Float64 `json:"volume_24hr"`
+	// EndDate is the market end date.
+	EndDate Time `json:"end_date"`
+	// SponsoredDailyRate is the sponsor-funded daily reward rate.
+	SponsoredDailyRate Float64 `json:"sponsored_daily_rate"`
+	// NativeDailyRate is the native daily reward rate.
+	NativeDailyRate Float64 `json:"native_daily_rate"`
+	// TotalDailyRate is the total daily reward rate.
+	TotalDailyRate Float64 `json:"total_daily_rate"`
+	// SponsorsCount is the number of reward sponsors.
+	SponsorsCount Int `json:"sponsors_count"`
 }
 
 // MarketReward describes reward eligibility for a specific market.
@@ -758,6 +801,22 @@ type MarketReward struct {
 	MarketCompetitiveness Float64 `json:"market_competitiveness"`
 	// Tokens lists the conditional outcome tokens.
 	Tokens []Token `json:"tokens"`
+	// NegRisk indicates a negative-risk market.
+	NegRisk bool `json:"neg_risk"`
+	// Spread is the current bid-ask spread.
+	Spread Float64 `json:"spread"`
+	// Volume24h is the 24h traded volume.
+	Volume24h Float64 `json:"volume_24hr"`
+	// EndDate is the market end date.
+	EndDate Time `json:"end_date"`
+	// SponsoredDailyRate is the sponsor-funded daily reward rate.
+	SponsoredDailyRate Float64 `json:"sponsored_daily_rate"`
+	// NativeDailyRate is the native daily reward rate.
+	NativeDailyRate Float64 `json:"native_daily_rate"`
+	// TotalDailyRate is the total daily reward rate.
+	TotalDailyRate Float64 `json:"total_daily_rate"`
+	// SponsorsCount is the number of reward sponsors.
+	SponsorsCount Int `json:"sponsors_count"`
 	// RewardsConfig lists the active reward periods.
 	RewardsConfig []MarketRewardsConfig `json:"rewards_config"`
 }

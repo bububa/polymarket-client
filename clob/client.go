@@ -527,26 +527,67 @@ func (c *Client) PostHeartbeat(ctx context.Context, heartbeatID string, out *Hea
 // GetEarningsForUserForDay returns the user's reward earnings for a specific date.
 // Requires L2 auth.
 func (c *Client) GetEarningsForUserForDay(ctx context.Context, date string, signatureType SignatureType, cursor string, out *Page[UserEarning]) error {
-	q := url.Values{"date": []string{date}, "signature_type": []string{strconv.Itoa(int(signatureType))}}
-	if cursor != "" {
-		q.Set("next_cursor", cursor)
-	}
-	return c.do(ctx, http.MethodGet, "/rewards/user", q, nil, 2, out)
+	return c.GetEarningsForUserForDayWithParams(ctx, UserRewardsParams{
+		Date:          date,
+		SignatureType: signatureType,
+		NextCursor:    cursor,
+	}, out)
+}
+
+// GetEarningsForUserForDayWithParams returns reward earnings for a specific date.
+// Requires L2 auth.
+func (c *Client) GetEarningsForUserForDayWithParams(ctx context.Context, params UserRewardsParams, out *Page[UserEarning]) error {
+	return c.do(ctx, http.MethodGet, "/rewards/user", values(params), nil, 2, out)
 }
 
 // GetTotalEarningsForUserForDay returns the user's total reward earnings for a specific date.
+// The endpoint returns totals grouped by reward asset. This legacy helper
+// preserves the single-output signature by summing all rows into Earnings using
+// earnings * asset_rate, and leaves AssetAddress empty when multiple assets are
+// present. Use GetTotalEarningsForUserForDayWithParams for per-asset rows.
 // Requires L2 auth.
 func (c *Client) GetTotalEarningsForUserForDay(ctx context.Context, date string, signatureType SignatureType, out *UserEarning) error {
-	q := url.Values{"date": []string{date}, "signature_type": []string{strconv.Itoa(int(signatureType))}}
-	return c.do(ctx, http.MethodGet, "/rewards/user/total", q, nil, 2, out)
+	var rows []TotalUserEarning
+	if err := c.GetTotalEarningsForUserForDayWithParams(ctx, UserRewardsParams{
+		Date:          date,
+		SignatureType: signatureType,
+	}, &rows); err != nil {
+		return err
+	}
+	if out == nil || len(rows) == 0 {
+		return nil
+	}
+	out.Date = rows[0].Date
+	out.MakerAddress = rows[0].MakerAddress
+	out.Earnings = 0
+	out.AssetRate = 1
+	out.AssetAddress = rows[0].AssetAddress
+	if len(rows) > 1 {
+		out.AssetAddress = ""
+	}
+	for _, row := range rows {
+		out.Earnings += row.Earnings * row.AssetRate
+	}
+	return nil
+}
+
+// GetTotalEarningsForUserForDayWithParams returns total reward earnings grouped by reward asset.
+// Requires L2 auth.
+func (c *Client) GetTotalEarningsForUserForDayWithParams(ctx context.Context, params UserRewardsParams, out *[]TotalUserEarning) error {
+	return c.do(ctx, http.MethodGet, "/rewards/user/total", values(params), nil, 2, out)
 }
 
 // GetRewardPercentages returns the reward percentage multiplier for each market.
 // Requires L2 auth.
 func (c *Client) GetRewardPercentages(ctx context.Context, signatureType SignatureType) (map[string]Float64, error) {
+	return c.GetRewardPercentagesWithParams(ctx, UserRewardsParams{SignatureType: signatureType})
+}
+
+// GetRewardPercentagesWithParams returns the reward percentage multiplier for each market.
+// Requires L2 auth.
+func (c *Client) GetRewardPercentagesWithParams(ctx context.Context, params UserRewardsParams) (map[string]Float64, error) {
 	var out map[string]Float64
-	q := url.Values{"signature_type": []string{strconv.Itoa(int(signatureType))}}
-	return out, c.do(ctx, http.MethodGet, "/rewards/user/percentages", q, nil, 2, &out)
+	return out, c.do(ctx, http.MethodGet, "/rewards/user/percentages", values(params), nil, 2, &out)
 }
 
 // GetUserEarningsAndMarketsConfig returns the user's earnings combined with market reward configuration.
@@ -563,14 +604,28 @@ func (c *Client) GetCurrentRewards(ctx context.Context, cursor string, out *Page
 	return c.getPage(ctx, "/rewards/markets/current", cursor, out)
 }
 
+// GetCurrentRewardsWithParams retrieves active reward campaigns for markets, paginated.
+// No authentication required.
+func (c *Client) GetCurrentRewardsWithParams(ctx context.Context, params RewardsMarketsParams, out *Page[CurrentReward]) error {
+	return c.do(ctx, http.MethodGet, "/rewards/markets/current", values(params), nil, 0, out)
+}
+
+// GetRewardsMarketsMulti retrieves multiple reward markets with market stats, paginated.
+// No authentication required.
+func (c *Client) GetRewardsMarketsMulti(ctx context.Context, params RewardsMarketsParams, out *Page[MarketReward]) error {
+	return c.do(ctx, http.MethodGet, "/rewards/markets/multi", values(params), nil, 0, out)
+}
+
 // GetRewardsForMarket retrieves reward information for a specific market by condition ID.
 // No authentication required.
 func (c *Client) GetRewardsForMarket(ctx context.Context, conditionID, cursor string, out *Page[MarketReward]) error {
-	q := url.Values{}
-	if cursor != "" {
-		q.Set("next_cursor", cursor)
-	}
-	return c.do(ctx, http.MethodGet, "/rewards/markets/"+url.PathEscape(conditionID), q, nil, 0, out)
+	return c.GetRewardsForMarketWithParams(ctx, conditionID, RewardsMarketsParams{NextCursor: cursor}, out)
+}
+
+// GetRewardsForMarketWithParams retrieves reward information for a specific market by condition ID.
+// No authentication required.
+func (c *Client) GetRewardsForMarketWithParams(ctx context.Context, conditionID string, params RewardsMarketsParams, out *Page[MarketReward]) error {
+	return c.do(ctx, http.MethodGet, "/rewards/markets/"+url.PathEscape(conditionID), values(params), nil, 0, out)
 }
 
 // CreateBuilderAPIKey generates an API key for builder/developer applications.

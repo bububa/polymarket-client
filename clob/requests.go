@@ -86,6 +86,32 @@ type RewardsMarketsParams struct {
 	ConditionID string `url:"condition_id,omitempty"`
 	// Date filters by reward date.
 	Date string `url:"date,omitempty"`
+	// OrderBy sets the sort field.
+	OrderBy string `url:"order_by,omitempty"`
+	// Position sets the sort direction or result position.
+	Position string `url:"position,omitempty"`
+	// PageSize sets the maximum number of results returned on this page.
+	PageSize int `url:"page_size,omitempty"`
+	// MaxSpread filters by maximum current spread.
+	MaxSpread string `url:"max_spread,omitempty"`
+	// MinPrice filters by minimum outcome token price.
+	MinPrice string `url:"min_price,omitempty"`
+	// MaxPrice filters by maximum outcome token price.
+	MaxPrice string `url:"max_price,omitempty"`
+	// MinVolume24h filters by minimum 24h volume.
+	MinVolume24h string `url:"min_volume_24hr,omitempty"`
+	// NextCursor is the pagination cursor.
+	NextCursor string `url:"next_cursor,omitempty"`
+}
+
+// UserRewardsParams filters authenticated user reward endpoints.
+type UserRewardsParams struct {
+	// Date filters by reward date.
+	Date string `url:"date,omitempty"`
+	// SignatureType identifies the wallet signature mode.
+	SignatureType SignatureType `url:"signature_type"`
+	// MakerAddress filters rewards by the maker/funder wallet address.
+	MakerAddress string `url:"maker_address,omitempty"`
 	// NextCursor is the pagination cursor.
 	NextCursor string `url:"next_cursor,omitempty"`
 }
@@ -100,6 +126,12 @@ type EarningsParams struct {
 	Position string `url:"position,omitempty"`
 	// NoCompetition skips low-competition markets.
 	NoCompetition bool `url:"no_competition,omitempty"`
+	// PageSize sets the maximum number of results returned on this page.
+	PageSize int `url:"page_size,omitempty"`
+	// SignatureType identifies the wallet signature mode.
+	SignatureType SignatureType `url:"signature_type"`
+	// MakerAddress filters rewards by the maker/funder wallet address.
+	MakerAddress string `url:"maker_address,omitempty"`
 	// NextCursor is the pagination cursor.
 	NextCursor string `url:"next_cursor,omitempty"`
 }
