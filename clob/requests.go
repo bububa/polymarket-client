@@ -80,26 +80,50 @@ type OrderMarketCancelParams struct {
 	AssetID string `json:"asset_id,omitempty"`
 }
 
-// RewardsMarketsParams filters GET /rewards/markets requests.
-type RewardsMarketsParams struct {
-	// ConditionID filters by market ID.
-	ConditionID string `url:"condition_id,omitempty"`
-	// Date filters by reward date.
-	Date string `url:"date,omitempty"`
+// CurrentRewardsParams filters GET /rewards/markets/current requests.
+type CurrentRewardsParams struct {
+	// Sponsored selects sponsored reward configurations.
+	Sponsored bool `url:"sponsored,omitempty"`
+	// NextCursor is the pagination cursor.
+	NextCursor string `url:"next_cursor,omitempty"`
+}
+
+// RewardsMarketParams filters GET /rewards/markets/{condition_id} requests.
+type RewardsMarketParams struct {
+	// Sponsored folds sponsored daily rates into each config's rate_per_day.
+	Sponsored bool `url:"sponsored,omitempty"`
+	// NextCursor is the pagination cursor.
+	NextCursor string `url:"next_cursor,omitempty"`
+}
+
+// RewardsMarketsMultiParams filters GET /rewards/markets/multi requests.
+type RewardsMarketsMultiParams struct {
+	// Q searches market questions/descriptions.
+	Q string `url:"q,omitempty"`
+	// TagSlugs filters by tag slug. Multiple values are ORed by the API.
+	TagSlugs []string `url:"tag_slug,omitempty"`
+	// EventIDs filters by event ID. Multiple values are ORed by the API.
+	EventIDs []Int `url:"event_id,omitempty"`
+	// EventTitle searches event titles case-insensitively.
+	EventTitle string `url:"event_title,omitempty"`
 	// OrderBy sets the sort field.
 	OrderBy string `url:"order_by,omitempty"`
 	// Position sets the sort direction or result position.
 	Position string `url:"position,omitempty"`
 	// PageSize sets the maximum number of results returned on this page.
 	PageSize int `url:"page_size,omitempty"`
-	// MaxSpread filters by maximum current spread.
-	MaxSpread string `url:"max_spread,omitempty"`
-	// MinPrice filters by minimum outcome token price.
-	MinPrice string `url:"min_price,omitempty"`
-	// MaxPrice filters by maximum outcome token price.
-	MaxPrice string `url:"max_price,omitempty"`
 	// MinVolume24h filters by minimum 24h volume.
-	MinVolume24h string `url:"min_volume_24hr,omitempty"`
+	MinVolume24h Float64 `url:"min_volume_24hr,omitempty"`
+	// MaxVolume24h filters by maximum 24h volume.
+	MaxVolume24h Float64 `url:"max_volume_24hr,omitempty"`
+	// MinSpread filters by minimum current spread.
+	MinSpread Float64 `url:"min_spread,omitempty"`
+	// MaxSpread filters by maximum current spread.
+	MaxSpread Float64 `url:"max_spread,omitempty"`
+	// MinPrice filters by minimum outcome token price.
+	MinPrice Float64 `url:"min_price,omitempty"`
+	// MaxPrice filters by maximum outcome token price.
+	MaxPrice Float64 `url:"max_price,omitempty"`
 	// NextCursor is the pagination cursor.
 	NextCursor string `url:"next_cursor,omitempty"`
 }
@@ -112,6 +136,8 @@ type UserRewardsParams struct {
 	SignatureType SignatureType `url:"signature_type"`
 	// MakerAddress filters rewards by the maker/funder wallet address.
 	MakerAddress string `url:"maker_address,omitempty"`
+	// Sponsored selects sponsored reward earnings where supported.
+	Sponsored bool `url:"sponsored,omitempty"`
 	// NextCursor is the pagination cursor.
 	NextCursor string `url:"next_cursor,omitempty"`
 }
@@ -120,12 +146,26 @@ type UserRewardsParams struct {
 type EarningsParams struct {
 	// Date filters by reward date.
 	Date string `url:"date,omitempty"`
+	// Sponsored selects sponsored reward earnings.
+	Sponsored bool `url:"sponsored,omitempty"`
+	// Q searches market questions/descriptions.
+	Q string `url:"q,omitempty"`
+	// TagSlugs filters by tag slug. Multiple values are ORed by the API.
+	TagSlugs []string `url:"tag_slug,omitempty"`
+	// FavoriteMarkets limits results to favorited markets.
+	FavoriteMarkets bool `url:"favorite_markets,omitempty"`
 	// OrderBy sets the sort field.
 	OrderBy string `url:"order_by,omitempty"`
-	// Position sets the result offset.
+	// Position sets the sort direction.
 	Position string `url:"position,omitempty"`
 	// NoCompetition skips low-competition markets.
 	NoCompetition bool `url:"no_competition,omitempty"`
+	// OnlyMergeable limits results to mergeable markets.
+	OnlyMergeable bool `url:"only_mergeable,omitempty"`
+	// OnlyOpenOrders limits results to markets where the user has open orders.
+	OnlyOpenOrders bool `url:"only_open_orders,omitempty"`
+	// OnlyOpenPositions limits results to markets where the user has open positions.
+	OnlyOpenPositions bool `url:"only_open_positions,omitempty"`
 	// PageSize sets the maximum number of results returned on this page.
 	PageSize int `url:"page_size,omitempty"`
 	// SignatureType identifies the wallet signature mode.

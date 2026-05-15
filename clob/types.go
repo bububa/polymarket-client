@@ -690,6 +690,8 @@ type TotalUserEarning struct {
 
 type UserRewardsEarning struct {
 	ConditionID           string          `json:"condition_id"`
+	MarketID              Int             `json:"market_id"`
+	EventID               Int             `json:"event_id"`
 	Question              string          `json:"question"`
 	MarketSlug            string          `json:"market_slug"`
 	EventSlug             string          `json:"event_slug"`
@@ -707,6 +709,7 @@ type UserRewardsEarning struct {
 }
 
 type RewardsConfig struct {
+	ID           Int     `json:"id"`
 	AssetAddress string  `json:"asset_address"`
 	StartDate    Date    `json:"start_date"`
 	EndDate      Date    `json:"end_date"`
@@ -718,7 +721,7 @@ type RewardsConfig struct {
 // MarketRewardsConfig describes the reward period for one market asset.
 type MarketRewardsConfig struct {
 	// ID is the config identifier.
-	ID String `json:"id"`
+	ID Int `json:"id"`
 	// AssetAddress is the reward asset contract address.
 	AssetAddress string `json:"asset_address"`
 	// StartDate is the reward start date.
@@ -785,14 +788,24 @@ type CurrentReward struct {
 type MarketReward struct {
 	// ConditionID is the market condition identifier.
 	ConditionID string `json:"condition_id"`
+	// EventID is the parent event identifier.
+	EventID Int `json:"event_id"`
 	// Question is the market question text.
 	Question string `json:"question"`
+	// MarketID is the market identifier.
+	MarketID Int `json:"market_id"`
 	// MarketSlug is the URL-friendly market slug.
 	MarketSlug string `json:"market_slug"`
 	// EventSlug is the parent event slug.
 	EventSlug string `json:"event_slug"`
+	// CreatedAt is when the market was created.
+	CreatedAt Time `json:"created_at"`
+	// GroupItemTitle is the market title inside a grouped event.
+	GroupItemTitle string `json:"group_item_title"`
 	// Image is the market banner image URL.
 	Image string `json:"image"`
+	// OneDayPriceChange is the first token price change over the last day.
+	OneDayPriceChange Float64 `json:"one_day_price_change"`
 	// RewardsMaxSpread is the max spread to qualify.
 	RewardsMaxSpread Float64 `json:"rewards_max_spread"`
 	// RewardsMinSize is the minimum order size to qualify.

@@ -612,22 +612,40 @@ func TestRewardsUserEndpointsIncludeOfficialParams(t *testing.T) {
 
 		switch r.URL.Path {
 		case "/rewards/user":
-			if r.URL.Query().Get("date") != "2026-05-13" || r.URL.Query().Get("next_cursor") != "abc" {
+			if r.URL.Query().Get("date") != "2026-05-13" ||
+				r.URL.Query().Get("sponsored") != "true" ||
+				r.URL.Query().Get("next_cursor") != "abc" {
 				t.Fatalf("user rewards query = %s", r.URL.RawQuery)
 			}
 			_, _ = w.Write([]byte(`{"data":[{"date":"2026-05-13 00:00:00+00","condition_id":"0xcond","asset_address":"0xasset","maker_address":"0xmaker","earnings":"0.12","asset_rate":"1"}],"next_cursor":"LTE="}`))
 		case "/rewards/user/total":
-			if r.URL.Query().Get("date") != "2026-05-13" {
+			if r.URL.Query().Get("date") != "2026-05-13" ||
+				r.URL.Query().Get("sponsored") != "true" {
 				t.Fatalf("total rewards query = %s", r.URL.RawQuery)
 			}
 			_, _ = w.Write([]byte(`[{"date":"2026-05-13 00:00:00+00","asset_address":"0xasset","maker_address":"0xmaker","earnings":"0.32","asset_rate":"1"}]`))
 		case "/rewards/user/percentages":
 			_, _ = w.Write([]byte(`{"0xcond":"0.38"}`))
 		case "/rewards/user/markets":
-			if r.URL.Query().Get("order_by") != "earning_percentage" || r.URL.Query().Get("page_size") != "500" {
+			q := r.URL.Query()
+			if q.Get("date") != "2026-05-13" ||
+				q.Get("sponsored") != "true" ||
+				q.Get("q") != "election" ||
+				len(q["tag_slug"]) != 2 ||
+				q["tag_slug"][0] != "sports" ||
+				q["tag_slug"][1] != "politics" ||
+				q.Get("favorite_markets") != "true" ||
+				q.Get("no_competition") != "true" ||
+				q.Get("only_mergeable") != "true" ||
+				q.Get("only_open_orders") != "true" ||
+				q.Get("only_open_positions") != "true" ||
+				q.Get("order_by") != "earning_percentage" ||
+				q.Get("position") != "DESC" ||
+				q.Get("page_size") != "500" ||
+				q.Get("next_cursor") != "def" {
 				t.Fatalf("markets query = %s", r.URL.RawQuery)
 			}
-			_, _ = w.Write([]byte(`{"data":[{"condition_id":"0xcond","question":"Q","market_slug":"m","event_slug":"e","rewards_max_spread":"0.035","rewards_min_size":"100","market_competitiveness":"4.2","spread":"0.01","volume_24hr":"1234","tokens":[{"token_id":"1","outcome":"YES","price":"0.5"}],"rewards_config":[{"asset_address":"0xasset","start_date":"2026-05-13","end_date":"2026-05-14","rate_per_day":"300","total_rewards":"300","total_days":"1"}],"maker_address":"0xmaker","earning_percentage":"0.38","earnings":[{"asset_address":"0xasset","earnings":"0.12","asset_rate":"1"}]}],"next_cursor":"LTE="}`))
+			_, _ = w.Write([]byte(`{"total_count":42,"data":[{"condition_id":"0xcond","market_id":"248849","event_id":"12345","question":"Q","market_slug":"m","event_slug":"e","rewards_max_spread":"0.035","rewards_min_size":"100","market_competitiveness":"4.2","spread":"0.01","volume_24hr":"1234","tokens":[{"token_id":"1","outcome":"YES","price":"0.5"}],"rewards_config":[{"id":0,"asset_address":"0xasset","start_date":"2026-05-13","end_date":"2026-05-14","rate_per_day":"300","total_rewards":"300","total_days":"1"}],"maker_address":"0xmaker","earning_percentage":"0.38","earnings":[{"asset_address":"0xasset","earnings":"0.12","asset_rate":"1"}]}],"next_cursor":"LTE="}`))
 		default:
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
@@ -649,6 +667,7 @@ func TestRewardsUserEndpointsIncludeOfficialParams(t *testing.T) {
 		Date:          "2026-05-13",
 		SignatureType: SignatureTypeGnosisSafe,
 		MakerAddress:  "0xmaker",
+		Sponsored:     true,
 		NextCursor:    "abc",
 	}, &user); err != nil {
 		t.Fatal(err)
@@ -662,6 +681,7 @@ func TestRewardsUserEndpointsIncludeOfficialParams(t *testing.T) {
 		Date:          "2026-05-13",
 		SignatureType: SignatureTypeGnosisSafe,
 		MakerAddress:  "0xmaker",
+		Sponsored:     true,
 	}, &total); err != nil {
 		t.Fatal(err)
 	}
@@ -682,13 +702,30 @@ func TestRewardsUserEndpointsIncludeOfficialParams(t *testing.T) {
 
 	var markets Page[UserRewardsEarning]
 	if err := client.GetUserEarningsAndMarketsConfig(context.Background(), EarningsParams{
-		OrderBy:      "earning_percentage",
-		PageSize:     500,
-		MakerAddress: "0xmaker",
+		Date:              "2026-05-13",
+		Sponsored:         true,
+		Q:                 "election",
+		TagSlugs:          []string{"sports", "politics"},
+		FavoriteMarkets:   true,
+		OrderBy:           "earning_percentage",
+		Position:          "DESC",
+		NoCompetition:     true,
+		OnlyMergeable:     true,
+		OnlyOpenOrders:    true,
+		OnlyOpenPositions: true,
+		PageSize:          500,
+		MakerAddress:      "0xmaker",
+		NextCursor:        "def",
 	}, SignatureTypeGnosisSafe, &markets); err != nil {
 		t.Fatal(err)
 	}
-	if len(markets.Data) != 1 || float64(markets.Data[0].Spread) != 0.01 || float64(markets.Data[0].Volume24h) != 1234 {
+	if len(markets.Data) != 1 ||
+		int(markets.TotalCount) != 42 ||
+		int(markets.Data[0].MarketID) != 248849 ||
+		int(markets.Data[0].EventID) != 12345 ||
+		float64(markets.Data[0].Spread) != 0.01 ||
+		float64(markets.Data[0].Volume24h) != 1234 ||
+		int(markets.Data[0].RewardsConfig[0].ID) != 0 {
 		t.Fatalf("unexpected markets: %+v", markets)
 	}
 }
@@ -699,41 +736,124 @@ func TestRewardsMarketsMultiUsesOfficialParams(t *testing.T) {
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
 		}
 		q := r.URL.Query()
-		if q.Get("order_by") != "rate_per_day" ||
+		if q.Get("q") != "election" ||
+			len(q["tag_slug"]) != 2 ||
+			q["tag_slug"][0] != "sports" ||
+			q["tag_slug"][1] != "politics" ||
+			len(q["event_id"]) != 2 ||
+			q["event_id"][0] != "100" ||
+			q["event_id"][1] != "200" ||
+			q.Get("event_title") != "US election" ||
+			q.Get("order_by") != "rate_per_day" ||
 			q.Get("position") != "DESC" ||
 			q.Get("page_size") != "50" ||
+			q.Get("min_spread") != "0.01" ||
 			q.Get("max_spread") != "0.1" ||
 			q.Get("min_price") != "0.1" ||
 			q.Get("max_price") != "0.9" ||
 			q.Get("min_volume_24hr") != "1000" ||
+			q.Get("max_volume_24hr") != "10000" ||
 			q.Get("next_cursor") != "abc" {
 			t.Fatalf("query = %s", r.URL.RawQuery)
 		}
-		_, _ = w.Write([]byte(`{"data":[{"condition_id":"0xcond","question":"Q","market_slug":"m","event_slug":"e","rewards_max_spread":"0.035","rewards_min_size":"100","market_competitiveness":"4.2","neg_risk":true,"spread":"0.01","volume_24hr":"1234","end_date":"2026-05-14 00:00:00+00","sponsored_daily_rate":"200","native_daily_rate":"100","total_daily_rate":"300","sponsors_count":2,"tokens":[{"token_id":"1","outcome":"YES","price":"0.5","winner":false}],"rewards_config":[{"asset_address":"0xasset","start_date":"2026-05-13","end_date":"2026-05-14","rate_per_day":"300","total_rewards":"300","total_days":"1"}]}],"next_cursor":"LTE="}`))
+		_, _ = w.Write([]byte(`{"data":[{"condition_id":"0xcond","event_id":"12345","created_at":"2024-05-01T12:00:00Z","group_item_title":"Group title","market_id":"248849","question":"Q","market_slug":"m","event_slug":"e","image":"https://example.com/image.png","one_day_price_change":"0.03","rewards_max_spread":"0.035","rewards_min_size":"100","market_competitiveness":"4.2","neg_risk":true,"spread":"0.01","volume_24hr":"1234","end_date":"2026-05-14 00:00:00+00","sponsored_daily_rate":"200","native_daily_rate":"100","total_daily_rate":"300","sponsors_count":2,"tokens":[{"token_id":"1","outcome":"YES","price":"0.5","winner":false}],"rewards_config":[{"id":7,"asset_address":"0xasset","start_date":"2026-05-13","end_date":"2026-05-14","rate_per_day":"300","total_rewards":"300","total_days":"1"}]}],"next_cursor":"LTE="}`))
 	}))
 	defer srv.Close()
 
 	client := NewClient(srv.URL)
 	var out Page[MarketReward]
-	if err := client.GetRewardsMarketsMulti(context.Background(), RewardsMarketsParams{
+	if err := client.GetRewardsMarketsMulti(context.Background(), RewardsMarketsMultiParams{
+		Q:            "election",
+		TagSlugs:     []string{"sports", "politics"},
+		EventIDs:     []Int{100, 200},
+		EventTitle:   "US election",
 		OrderBy:      "rate_per_day",
 		Position:     "DESC",
 		PageSize:     50,
-		MaxSpread:    "0.1",
-		MinPrice:     "0.1",
-		MaxPrice:     "0.9",
-		MinVolume24h: "1000",
+		MinSpread:    0.01,
+		MaxSpread:    0.1,
+		MinPrice:     0.1,
+		MaxPrice:     0.9,
+		MinVolume24h: 1000,
+		MaxVolume24h: 10000,
 		NextCursor:   "abc",
 	}, &out); err != nil {
 		t.Fatal(err)
 	}
 	if len(out.Data) != 1 ||
 		out.Data[0].ConditionID != "0xcond" ||
+		int(out.Data[0].EventID) != 12345 ||
+		int(out.Data[0].MarketID) != 248849 ||
+		out.Data[0].GroupItemTitle != "Group title" ||
+		float64(out.Data[0].OneDayPriceChange) != 0.03 ||
 		!out.Data[0].NegRisk ||
 		float64(out.Data[0].TotalDailyRate) != 300 ||
 		int(out.Data[0].SponsorsCount) != 2 ||
+		int(out.Data[0].RewardsConfig[0].ID) != 7 ||
 		float64(out.Data[0].RewardsConfig[0].TotalDays) != 1 {
 		t.Fatalf("unexpected rewards markets: %+v", out)
+	}
+}
+
+func TestCurrentRewardsUsesOfficialParamsAndFields(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/rewards/markets/current" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+		q := r.URL.Query()
+		if q.Get("sponsored") != "true" || q.Get("next_cursor") != "abc" {
+			t.Fatalf("query = %s", r.URL.RawQuery)
+		}
+		_, _ = w.Write([]byte(`{"limit":500,"count":1,"next_cursor":"LTE=","data":[{"condition_id":"0xcond","rewards_max_spread":99,"rewards_min_size":10,"rewards_config":[{"id":0,"asset_address":"0xasset","start_date":"2024-03-01","end_date":"2500-12-31","rate_per_day":2,"total_rewards":92}],"sponsored_daily_rate":0.5,"sponsors_count":2,"native_daily_rate":2.5,"total_daily_rate":3}]}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL)
+	var out Page[CurrentReward]
+	if err := client.GetCurrentRewardsWithParams(context.Background(), CurrentRewardsParams{
+		Sponsored:  true,
+		NextCursor: "abc",
+	}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Data) != 1 ||
+		out.Data[0].ConditionID != "0xcond" ||
+		int(out.Data[0].RewardsConfig[0].ID) != 0 ||
+		float64(out.Data[0].SponsoredDailyRate) != 0.5 ||
+		int(out.Data[0].SponsorsCount) != 2 ||
+		float64(out.Data[0].NativeDailyRate) != 2.5 ||
+		float64(out.Data[0].TotalDailyRate) != 3 {
+		t.Fatalf("unexpected current rewards: %+v", out)
+	}
+}
+
+func TestRewardsForMarketUsesOfficialParamsAndFields(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/rewards/markets/0xcond" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+		q := r.URL.Query()
+		if q.Get("sponsored") != "true" || q.Get("next_cursor") != "abc" {
+			t.Fatalf("query = %s", r.URL.RawQuery)
+		}
+		_, _ = w.Write([]byte(`{"limit":100,"count":1,"next_cursor":"LTE=","data":[{"condition_id":"0xcond","question":"Q","market_slug":"m","event_slug":"e","image":"https://example.com/image.png","rewards_max_spread":99,"rewards_min_size":10,"market_competitiveness":0.42,"tokens":[{"token_id":"1","outcome":"YES","price":0.8}],"rewards_config":[{"id":1,"asset_address":"0xasset","start_date":"2024-03-01","end_date":"2500-12-31","rate_per_day":0.25,"total_rewards":0,"total_days":174161}]}]}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL)
+	var out Page[MarketReward]
+	if err := client.GetRewardsForMarketWithParams(context.Background(), "0xcond", RewardsMarketParams{
+		Sponsored:  true,
+		NextCursor: "abc",
+	}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(out.Data) != 1 ||
+		out.Data[0].Question != "Q" ||
+		float64(out.Data[0].MarketCompetitiveness) != 0.42 ||
+		int(out.Data[0].RewardsConfig[0].ID) != 1 ||
+		float64(out.Data[0].RewardsConfig[0].TotalDays) != 174161 {
+		t.Fatalf("unexpected market rewards: %+v", out)
 	}
 }
 

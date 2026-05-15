@@ -6,6 +6,8 @@ type Page[T any] struct {
 	Limit Int `json:"limit"`
 	// Count is the number of results on this page.
 	Count Int `json:"count"`
+	// TotalCount is the total number of results across all pages, when returned.
+	TotalCount Int `json:"total_count"`
 	// NextCursor is the pagination cursor for the next page, empty when exhausted.
 	NextCursor string `json:"next_cursor"`
 	// Data contains the page results.

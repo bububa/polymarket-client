@@ -606,25 +606,25 @@ func (c *Client) GetCurrentRewards(ctx context.Context, cursor string, out *Page
 
 // GetCurrentRewardsWithParams retrieves active reward campaigns for markets, paginated.
 // No authentication required.
-func (c *Client) GetCurrentRewardsWithParams(ctx context.Context, params RewardsMarketsParams, out *Page[CurrentReward]) error {
+func (c *Client) GetCurrentRewardsWithParams(ctx context.Context, params CurrentRewardsParams, out *Page[CurrentReward]) error {
 	return c.do(ctx, http.MethodGet, "/rewards/markets/current", values(params), nil, 0, out)
 }
 
 // GetRewardsMarketsMulti retrieves multiple reward markets with market stats, paginated.
 // No authentication required.
-func (c *Client) GetRewardsMarketsMulti(ctx context.Context, params RewardsMarketsParams, out *Page[MarketReward]) error {
+func (c *Client) GetRewardsMarketsMulti(ctx context.Context, params RewardsMarketsMultiParams, out *Page[MarketReward]) error {
 	return c.do(ctx, http.MethodGet, "/rewards/markets/multi", values(params), nil, 0, out)
 }
 
 // GetRewardsForMarket retrieves reward information for a specific market by condition ID.
 // No authentication required.
 func (c *Client) GetRewardsForMarket(ctx context.Context, conditionID, cursor string, out *Page[MarketReward]) error {
-	return c.GetRewardsForMarketWithParams(ctx, conditionID, RewardsMarketsParams{NextCursor: cursor}, out)
+	return c.GetRewardsForMarketWithParams(ctx, conditionID, RewardsMarketParams{NextCursor: cursor}, out)
 }
 
 // GetRewardsForMarketWithParams retrieves reward information for a specific market by condition ID.
 // No authentication required.
-func (c *Client) GetRewardsForMarketWithParams(ctx context.Context, conditionID string, params RewardsMarketsParams, out *Page[MarketReward]) error {
+func (c *Client) GetRewardsForMarketWithParams(ctx context.Context, conditionID string, params RewardsMarketParams, out *Page[MarketReward]) error {
 	return c.do(ctx, http.MethodGet, "/rewards/markets/"+url.PathEscape(conditionID), values(params), nil, 0, out)
 }
 
