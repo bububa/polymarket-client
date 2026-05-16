@@ -618,7 +618,32 @@ The client automatically reconnects on read failures with exponential backoff an
 ### WebSocket Real-Time Data (`clob/ws/rtds`)
 
 The `rtds` subpackage provides WebSocket real-time data stream subscriptions
-for market data without needing the full CLOB client.
+for comments, crypto prices, and equity prices without needing the full CLOB
+client. It defaults to the official RTDS endpoint
+`wss://ws-live-data.polymarket.com`.
+
+```go
+client := rtds.NewClient("")
+defer client.Close()
+
+if err := client.Connect(ctx); err != nil {
+    panic(err)
+}
+
+err := client.SubscribeCryptoPrices(ctx, []string{
+    rtds.BinanceSymbolBTCUSDT,
+    rtds.BinanceSymbolETHUSDT,
+})
+```
+
+RTDS sends a text `PING` every 5 seconds by default, automatically reconnects
+on read failures, and replays stored subscriptions after reconnect. Optional
+stale detection is available with `WithStaleTimeout`.
+
+Supported-symbol helpers mirror the official RTDS documentation:
+`SupportedBinanceSymbols`, `SupportedChainlinkSymbols`, and
+`SupportedEquitySymbols`. Subscribe helpers do not reject unknown symbols so
+new server-side symbols can be used before the SDK is updated.
 
 
 ## Relayer Package
