@@ -1,0 +1,14 @@
+{
+  "kind": "builder_relayer_client_deposit_wallet_address",
+  "source": "Polymarket/builder-relayer-client src/builder/derive.ts deriveDepositWallet",
+  "vectors": [
+    {
+      "name": "polygon_owner_from_issue_19",
+      "chainId": 137,
+      "owner": "0xDd6E9091385Bb28aeF0F7f1e3b7D3eBcB8D49EEe",
+      "factory": "0x00000000000Fb5C9ADea0298D729A0CB3823Cc07",
+      "implementation": "0x58CA52ebe0DadfdF531Cde7062e76746de4Db1eB",
+      "depositWallet": "0xD9D291D21619bc916D33B2AAdFcA2Ab6C9C68A88"
+    }
+  ]
+}

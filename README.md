@@ -275,10 +275,139 @@ CLOB v2 orders support multiple wallet/signature modes:
 | Safe | `SignatureTypeGnosisSafe` | `maker` is the Safe/funder wallet |
 | Deposit wallet | `SignatureTypePoly1271` | `maker` and `signer` are the deposit wallet; the cryptographic signer is the owner/session signer |
 
-For deposit-wallet CLOB orders, set `SignatureTypePoly1271` and set `Maker` to the deposit wallet address. The SDK fills `Signer` as the same deposit wallet and signs the `POLY_1271` / ERC-7739-wrapped order signature:
+For deposit-wallet CLOB orders, derive the deterministic deposit wallet from the owner signer, approve trading contracts from that deposit wallet through a relayer `WALLET` batch, refresh the CLOB balance/allowance cache with `signature_type=3`, then post the order with `SignatureTypePoly1271`.
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "math/big"
+    "strconv"
+    "strings"
+    "time"
+
+    "github.com/bububa/polymarket-client/clob"
+    "github.com/bububa/polymarket-client/relayer"
+    "github.com/ethereum/go-ethereum/accounts/abi"
+    "github.com/ethereum/go-ethereum/common"
+)
+
+func main() {
+    ctx := context.Background()
+
+    signer, err := clob.ParsePrivateKey("your-owner-or-session-private-key")
+    if err != nil {
+        panic(err)
+    }
+
+    clobCreds := clob.Credentials{
+        Key:        "your-clob-api-key",
+        Secret:     "your-clob-api-secret",
+        Passphrase: "your-clob-api-passphrase",
+    }
+
+    relayerClient := relayer.New(relayer.Config{
+        Credentials: &relayer.Credentials{
+            APIKey:  "your-relayer-api-key",
+            Address: signer.Address().Hex(),
+        },
+        // BuilderCredentials can be used instead when your relayer account uses
+        // builder-key authentication.
+    })
+
+    client := clob.NewClient("",
+        clob.WithCredentials(clobCreds),
+        clob.WithSigner(signer),
+        clob.WithChainID(clob.PolygonChainID),
+        clob.WithRelayerClient(relayerClient),
+    )
+
+    depositWallet, err := client.DeriveDepositWalletAddress()
+    if err != nil {
+        panic(err)
+    }
+    fmt.Println("deposit wallet:", depositWallet.Hex())
+
+    // Deploy once. If your wallet was already deployed by onboarding, you can
+    // skip this and keep using the derived address.
+    var deployResp relayer.SubmitTransactionResponse
+    if err := client.DeployDepositWallet(ctx, &deployResp); err != nil {
+        panic(err)
+    }
+
+    contracts, err := clob.Contracts(clob.PolygonChainID)
+    if err != nil {
+        panic(err)
+    }
+
+    erc20ABI, err := abi.JSON(strings.NewReader(`[{"inputs":[{"name":"spender","type":"address"},{"name":"amount","type":"uint256"}],"name":"approve","outputs":[{"name":"","type":"bool"}],"stateMutability":"nonpayable","type":"function"}]`))
+    if err != nil {
+        panic(err)
+    }
+
+    maxUint256 := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(1))
+    approveData, err := erc20ABI.Pack("approve", contracts.Exchange, maxUint256)
+    if err != nil {
+        panic(err)
+    }
+
+    // This approval is executed by the deposit wallet, not by the owner EOA.
+    var approveResp relayer.SubmitTransactionResponse
+    err = client.DepositWalletBatch(ctx, &clob.DepositWalletBatchArgs{
+        DepositWallet: depositWallet.Hex(),
+        Deadline:      strconv.FormatInt(time.Now().Add(10*time.Minute).Unix(), 10),
+        Calls: []relayer.DepositWalletCall{
+            {
+                Target: contracts.Collateral.Hex(),
+                Value:  "0",
+                Data:   "0x" + common.Bytes2Hex(approveData),
+            },
+        },
+        Metadata: "approve-pusd-for-clob-exchange",
+    }, &approveResp)
+    if err != nil {
+        panic(err)
+    }
+
+    var allowance clob.BalanceAllowanceResponse
+    err = client.UpdateBalanceAllowance(ctx, clob.BalanceAllowanceParams{
+        AssetType:     clob.AssetCollateral,
+        SignatureType: clob.SignatureTypePoly1271,
+    }, &allowance)
+    if err != nil {
+        panic(err)
+    }
+
+    b := clob.NewOrderBuilder(client)
+    sigType := clob.SignatureTypePoly1271
+
+    orderResp, err := b.CreateAndPostOrderForToken(ctx, clob.OrderArgsV2{
+        TokenID:       "token-id",
+        Price:         "0.42",
+        Size:          "10",
+        Side:          clob.Buy,
+        SignatureType: &sigType,
+        Maker:         depositWallet.Hex(),
+    }, clob.GTC, nil)
+    if err != nil {
+        panic(err)
+    }
+    fmt.Printf("order placed: %s\n", orderResp.OrderID)
+}
+```
+
+For negative-risk markets, approve `contracts.NegRiskExchange` from the deposit wallet and build/post the order with `NegRisk: true`.
+
+For manual order construction, the important fields are the same: set `SignatureTypePoly1271` and set `Maker` to the derived deposit wallet address. The SDK fills `Signer` as the same deposit wallet and signs the `POLY_1271` / ERC-7739-wrapped order signature:
 
 ```go
 sigType := clob.SignatureTypePoly1271
+depositWallet, err := client.DeriveDepositWalletAddress()
+if err != nil {
+    panic(err)
+}
 
 order, err := b.BuildOrder(clob.OrderArgsV2{
     TokenID:       "token-id",
@@ -286,7 +415,7 @@ order, err := b.BuildOrder(clob.OrderArgsV2{
     Size:          "10",
     Side:          clob.Buy,
     SignatureType: &sigType,
-    Maker:         "0xDepositWalletAddress",
+    Maker:         depositWallet.Hex(),
 }, clob.CreateOrderOptions{
     TickSize: "0.01",
     NegRisk:  false,
@@ -296,7 +425,7 @@ if err != nil {
 }
 ```
 
-Before trading from a deposit wallet, refresh balance/allowance state with `signature_type=3`:
+After funding or changing approvals for a deposit wallet, refresh balance/allowance state with `signature_type=3`:
 
 ```go
 var allowance clob.BalanceAllowanceResponse
