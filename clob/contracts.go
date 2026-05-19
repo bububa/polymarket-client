@@ -101,6 +101,11 @@ const (
 	// documented in the deposit wallet migration guide, not in the resources/contracts
 	// page.
 	ContractAddressDepositWalletFactory = "0x00000000000Fb5C9ADea0298D729A0CB3823Cc07"
+
+	// ContractAddressDepositWalletImplementation is the Polygon mainnet deposit
+	// wallet implementation used by the factory's deterministic CREATE2 address
+	// derivation.
+	ContractAddressDepositWalletImplementation = "0x58CA52ebe0DadfdF531Cde7062e76746de4Db1eB"
 )
 
 const (
@@ -169,6 +174,10 @@ type ContractConfig struct {
 	// wallets through relayer WALLET-CREATE requests.
 	DepositWalletFactory common.Address
 
+	// DepositWalletImplementation is the implementation used when deriving the
+	// deterministic ERC-1967 deposit wallet proxy address.
+	DepositWalletImplementation common.Address
+
 	// UMAAdapter is the oracle adapter used when deriving condition IDs from
 	// question IDs.
 	UMAAdapter common.Address
@@ -194,6 +203,7 @@ var contractConfigs = map[int64]ContractConfig{
 		GnosisSafeFactory:           common.HexToAddress(ContractAddressGnosisSafeFactory),
 		ProxyFactory:                common.HexToAddress(ContractAddressPolymarketProxyFactory),
 		DepositWalletFactory:        common.HexToAddress(ContractAddressDepositWalletFactory),
+		DepositWalletImplementation: common.HexToAddress(ContractAddressDepositWalletImplementation),
 		UMAAdapter:                  common.HexToAddress(ContractAddressUMAAdapter),
 		UMAOptimisticOracle:         common.HexToAddress(ContractAddressUMAOptimisticOracle),
 	},
