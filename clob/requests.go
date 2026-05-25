@@ -4,10 +4,8 @@ package clob
 type TradeParams struct {
 	// ID filters by trade identifier.
 	ID string `url:"id,omitempty"`
-	// TakerAddress filters by taker wallet address.
-	TakerAddress string `url:"taker,omitempty"`
 	// MakerAddress filters by maker wallet address.
-	MakerAddress string `url:"maker,omitempty"`
+	MakerAddress string `url:"maker_address,omitempty"`
 	// Market filters by condition ID.
 	Market string `url:"market,omitempty"`
 	// AssetID filters by conditional token identifier.
@@ -16,6 +14,8 @@ type TradeParams struct {
 	Before int64 `url:"before,omitempty"`
 	// After filters trades after this Unix timestamp.
 	After int64 `url:"after,omitempty"`
+	// NextCursor is the pagination cursor.
+	NextCursor string `url:"next_cursor,omitempty"`
 }
 
 // OpenOrderParams filters GET /data/orders requests.
@@ -181,7 +181,7 @@ type BuilderTradeParams struct {
 	// ID filters by trade identifier.
 	ID string `url:"id,omitempty"`
 	// MakerAddress filters by maker wallet address.
-	MakerAddress string `url:"maker,omitempty"`
+	MakerAddress string `url:"maker_address,omitempty"`
 	// Market filters by condition ID.
 	Market string `url:"market,omitempty"`
 	// AssetID filters by conditional token identifier.

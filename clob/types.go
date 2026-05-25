@@ -137,6 +137,44 @@ func (r *openOrdersResponse) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type tradesResponse struct {
+	Trades     []Trade
+	Limit      Int
+	Count      Int
+	NextCursor string
+}
+
+func (r *tradesResponse) UnmarshalJSON(data []byte) error {
+	var raw []Trade
+	if err := json.Unmarshal(data, &raw); err == nil {
+		r.Trades = raw
+		return nil
+	}
+
+	var wrapped struct {
+		Data       []Trade `json:"data"`
+		Trades     []Trade `json:"trades"`
+		Limit      Int     `json:"limit"`
+		Count      Int     `json:"count"`
+		NextCursor string  `json:"next_cursor"`
+	}
+	if err := json.Unmarshal(data, &wrapped); err != nil {
+		return err
+	}
+	switch {
+	case wrapped.Data != nil:
+		r.Trades = wrapped.Data
+	case wrapped.Trades != nil:
+		r.Trades = wrapped.Trades
+	default:
+		r.Trades = nil
+	}
+	r.Limit = wrapped.Limit
+	r.Count = wrapped.Count
+	r.NextCursor = wrapped.NextCursor
+	return nil
+}
+
 // BookParams identifies a token/side combination for bulk price queries.
 type BookParams struct {
 	// TokenID is the conditional token identifier.
@@ -545,6 +583,10 @@ type MakerOrder struct {
 	Outcome string `json:"outcome"`
 	// Side is the order direction.
 	Side Side `json:"side"`
+	// BuilderFee is the builder fee for attributed orders.
+	BuilderFee Float64 `json:"builder_fee,omitempty"`
+	// BuilderCode is the builder attribution code.
+	BuilderCode string `json:"builder_code,omitempty"`
 }
 
 // Trade represents a matched fill between maker and taker.
@@ -569,6 +611,8 @@ type Trade struct {
 	Status string `json:"status"`
 	// MatchTime is when the trade was matched.
 	MatchTime Time `json:"match_time"`
+	// MatchTimeNano is the nanosecond-precision match timestamp, when returned.
+	MatchTimeNano string `json:"match_time_nano,omitempty"`
 	// LastUpdate is the last status change.
 	LastUpdate Time `json:"last_update"`
 	// Outcome is the outcome label.
@@ -587,6 +631,119 @@ type Trade struct {
 	TraderSide string `json:"trader_side"`
 	// ErrorMsg contains error details on failure.
 	ErrorMsg string `json:"error_msg"`
+	// ErrMsg contains error details on failure in the official SDK response shape.
+	ErrMsg string `json:"err_msg"`
+}
+
+// MarketTradeEvent is the event shape documented by Polymarket's official
+// SDKs for market live activity.
+type MarketTradeEvent struct {
+	// EventType identifies the live activity event type.
+	EventType string `json:"event_type"`
+	// Market describes the market and asset for the event.
+	Market MarketTradeEventMarket `json:"market"`
+	// User describes the public profile attached to the event.
+	User MarketTradeEventUser `json:"user"`
+	// Side is the trade direction.
+	Side Side `json:"side"`
+	// Size is the matched quantity.
+	Size Float64 `json:"size"`
+	// FeeRateBps is the fee rate in basis points.
+	FeeRateBps Float64 `json:"fee_rate_bps"`
+	// Price is the execution price.
+	Price Float64 `json:"price"`
+	// Outcome is the outcome label.
+	Outcome string `json:"outcome"`
+	// OutcomeIndex is the 0-based outcome index.
+	OutcomeIndex Int `json:"outcome_index"`
+	// TransactionHash is the on-chain transaction hash.
+	TransactionHash string `json:"transaction_hash"`
+	// Timestamp is when the event occurred.
+	Timestamp Time `json:"timestamp"`
+}
+
+// MarketTradeEventMarket is the market fragment in a live activity event.
+type MarketTradeEventMarket struct {
+	// ConditionID is the market condition identifier.
+	ConditionID string `json:"condition_id"`
+	// AssetID is the conditional token identifier.
+	AssetID String `json:"asset_id"`
+	// Question is the market question.
+	Question string `json:"question"`
+	// Icon is the market icon URL.
+	Icon string `json:"icon"`
+	// Slug is the market slug.
+	Slug string `json:"slug"`
+}
+
+// MarketTradeEventUser is the user fragment in a live activity event.
+type MarketTradeEventUser struct {
+	// Address is the user's profile wallet address.
+	Address string `json:"address"`
+	// Username is the display username.
+	Username string `json:"username"`
+	// ProfilePicture is the profile image URL.
+	ProfilePicture string `json:"profile_picture"`
+	// OptimizedProfilePicture is the optimized profile image URL.
+	OptimizedProfilePicture string `json:"optimized_profile_picture"`
+	// Pseudonym is the user's pseudonym.
+	Pseudonym string `json:"pseudonym"`
+}
+
+// MarketLiveActivity is the current /markets/live-activity/{condition_id}
+// response. Official SDKs expose this endpoint as getMarketTradesEvents, but
+// the live REST response can be market metadata instead of an event array.
+type MarketLiveActivity struct {
+	// ConditionID is the market condition identifier.
+	ConditionID string `json:"condition_id"`
+	// ID is the numeric market identifier.
+	ID Int `json:"id"`
+	// Question is the market question.
+	Question string `json:"question"`
+	// MarketSlug is the market slug.
+	MarketSlug string `json:"market_slug"`
+	// EventSlug is the parent event slug.
+	EventSlug string `json:"event_slug"`
+	// SeriesSlug is the parent series slug.
+	SeriesSlug string `json:"series_slug"`
+	// Icon is the market icon URL.
+	Icon string `json:"icon"`
+	// Image is the market image URL.
+	Image string `json:"image"`
+	// Tags are the market tags.
+	Tags []string `json:"tags"`
+	// Events contains live activity events when the endpoint returns an array
+	// or an events/data envelope.
+	Events []MarketTradeEvent `json:"events,omitempty"`
+	// Raw contains the unparsed JSON response.
+	Raw json.RawMessage `json:"-"`
+}
+
+func (m *MarketLiveActivity) UnmarshalJSON(data []byte) error {
+	var events []MarketTradeEvent
+	if err := json.Unmarshal(data, &events); err == nil {
+		*m = MarketLiveActivity{
+			Events: events,
+			Raw:    append(m.Raw[:0], data...),
+		}
+		return nil
+	}
+
+	type alias MarketLiveActivity
+	var wrapped struct {
+		alias
+		Data []MarketTradeEvent `json:"data"`
+	}
+	if err := json.Unmarshal(data, &wrapped); err != nil {
+		return err
+	}
+	out := MarketLiveActivity(wrapped.alias)
+	if out.Events == nil && wrapped.Data != nil {
+		out.Events = wrapped.Data
+	}
+	out.Raw = append(out.Raw[:0], data...)
+	*m = out
+	return nil
 }
 
 // CancelOrdersResponse reports cancellation results.

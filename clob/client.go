@@ -413,11 +413,47 @@ func (c *Client) GetPreMigrationOrders(ctx context.Context, params OpenOrderPara
 	return out, c.do(ctx, http.MethodGet, "/data/pre-migration-orders", values(params), nil, 2, &out)
 }
 
-// GetTrades lists trade history for the authenticated user.
+const (
+	initialCursor = "MA=="
+	endCursor     = "LTE="
+)
+
+// GetTrades lists trade history for the authenticated user across pages.
 // Requires L2 auth.
 func (c *Client) GetTrades(ctx context.Context, params TradeParams) ([]Trade, error) {
-	var out []Trade
-	return out, c.do(ctx, http.MethodGet, "/data/trades", values(params), nil, 2, &out)
+	var trades []Trade
+	cursor := params.NextCursor
+	if cursor == "" {
+		cursor = initialCursor
+	}
+	for cursor != "" && cursor != endCursor {
+		params.NextCursor = cursor
+		page, err := c.GetTradesPage(ctx, params)
+		if err != nil {
+			return nil, err
+		}
+		trades = append(trades, page.Data...)
+		if page.NextCursor == "" {
+			break
+		}
+		cursor = page.NextCursor
+	}
+	return trades, nil
+}
+
+// GetTradesPage returns one trade-history page with next_cursor metadata.
+// Requires L2 auth.
+func (c *Client) GetTradesPage(ctx context.Context, params TradeParams) (*Page[Trade], error) {
+	var out tradesResponse
+	if err := c.do(ctx, http.MethodGet, "/data/trades", values(params), nil, 2, &out); err != nil {
+		return nil, err
+	}
+	return &Page[Trade]{
+		Data:       out.Trades,
+		Limit:      out.Limit,
+		Count:      out.Count,
+		NextCursor: out.NextCursor,
+	}, nil
 }
 
 // PostOrder submits a single order to the order book.
@@ -678,11 +714,13 @@ func (c *Client) DeleteReadonlyAPIKey(ctx context.Context, key string) error {
 	return c.do(ctx, http.MethodDelete, "/auth/readonly-api-key", nil, map[string]string{"key": key}, 2, nil)
 }
 
-// GetMarketTradesEvents retrieves live trade activity events for a market by condition ID.
+// GetMarketTradesEvents retrieves live activity for a market by condition ID.
+// Official SDKs name this getMarketTradesEvents; the current REST response can
+// be market metadata instead of a trade-event array.
 // No authentication required.
-func (c *Client) GetMarketTradesEvents(ctx context.Context, conditionID string) ([]Trade, error) {
-	var out []Trade
-	return out, c.do(ctx, http.MethodGet, "/markets/live-activity/"+url.PathEscape(conditionID), nil, nil, 0, &out)
+func (c *Client) GetMarketTradesEvents(ctx context.Context, conditionID string) (*MarketLiveActivity, error) {
+	var out MarketLiveActivity
+	return &out, c.do(ctx, http.MethodGet, "/markets/live-activity/"+url.PathEscape(conditionID), nil, nil, 0, &out)
 }
 
 // CreateRFQRequest creates a new request-for-quote to solicit liquidity from market makers.
