@@ -98,8 +98,8 @@ orders, err := client.GetOpenOrders(ctx, clob.OpenOrderParams{
 
 // User's trade history
 trades, err := client.GetTrades(ctx, clob.TradeParams{
-    Market: "0xconditionID",
-    Limit:  100,
+    Market:     "0xconditionID",
+    NextCursor: "MA==",
 })
 ```
 

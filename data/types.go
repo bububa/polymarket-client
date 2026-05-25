@@ -137,6 +137,16 @@ type Trade struct {
 	ProxyWallet string `json:"proxyWallet"`
 	// User is the wallet address.
 	User string `json:"user"`
+	// Name is the user's display name.
+	Name string `json:"name"`
+	// Pseudonym is the user's pseudonym.
+	Pseudonym string `json:"pseudonym"`
+	// Bio is the user's profile bio.
+	Bio string `json:"bio"`
+	// ProfileImage is the user's profile image URL.
+	ProfileImage string `json:"profileImage"`
+	// ProfileImageOptimized is the optimized profile image URL.
+	ProfileImageOptimized string `json:"profileImageOptimized"`
 	// Side is the trade direction.
 	Side Side `json:"side"`
 	// Asset is the ERC-1155 token address.
@@ -171,6 +181,18 @@ type Trade struct {
 type Activity struct {
 	// ProxyWallet is the user's Polymarket proxy wallet.
 	ProxyWallet string `json:"proxyWallet"`
+	// User is the wallet address.
+	User string `json:"user"`
+	// Name is the user's display name.
+	Name string `json:"name"`
+	// Pseudonym is the user's pseudonym.
+	Pseudonym string `json:"pseudonym"`
+	// Bio is the user's profile bio.
+	Bio string `json:"bio"`
+	// ProfileImage is the user's profile image URL.
+	ProfileImage string `json:"profileImage"`
+	// ProfileImageOptimized is the optimized profile image URL.
+	ProfileImageOptimized string `json:"profileImageOptimized"`
 	// Timestamp is when the activity occurred.
 	Timestamp pmtypes.Int64 `json:"timestamp"`
 	// ConditionID is the CTF condition identifier.
@@ -209,16 +231,24 @@ type Activity struct {
 type Holder struct {
 	// ProxyWallet is the holder's proxy wallet.
 	ProxyWallet string `json:"proxyWallet"`
+	// Name is the display name.
+	Name string `json:"name"`
+	// Pseudonym is the user's pseudonym.
+	Pseudonym string `json:"pseudonym"`
+	// Bio is the user's profile bio.
+	Bio string `json:"bio"`
+	// ProfileImage is the profile image URL.
+	ProfileImage string `json:"profileImage"`
+	// ProfileImageOptimized is the optimized profile image URL.
+	ProfileImageOptimized string `json:"profileImageOptimized"`
+	// DisplayUsernamePublic indicates whether the display username is public.
+	DisplayUsernamePublic bool `json:"displayUsernamePublic"`
 	// Asset is the ERC-1155 token address.
 	Asset string `json:"asset"`
 	// Amount is the token balance.
 	Amount pmtypes.Float64 `json:"amount"`
 	// OutcomeIndex is the 0-based index of the outcome.
 	OutcomeIndex pmtypes.Int `json:"outcomeIndex"`
-	// Name is the display name.
-	Name string `json:"name"`
-	// ProfileImage is the profile image URL.
-	ProfileImage string `json:"profileImage"`
 	// Verified is true for verified accounts.
 	Verified bool `json:"verified"`
 	// Raw contains the unparsed JSON response.
@@ -489,6 +519,10 @@ func (p MarketPositionsParams) values() url.Values {
 type TradeParams struct {
 	// User is the wallet address.
 	User string
+	// Markets filters by condition IDs.
+	Markets []string
+	// EventIDs filters by event IDs.
+	EventIDs []int
 	// Limit sets the maximum results.
 	Limit int
 	// Offset sets the start index.
@@ -497,15 +531,23 @@ type TradeParams struct {
 	TakerOnly *bool
 	// Side filters by BUY or SELL.
 	Side Side
+	// FilterType selects an amount comparator such as CASH, TOKENS, or SHARES.
+	FilterType string
+	// FilterAmount is the comparator threshold amount.
+	FilterAmount string
 }
 
 func (p TradeParams) values() url.Values {
 	q := url.Values{}
 	setString(q, "user", p.User)
+	setCommaList(q, "market", p.Markets)
+	setIntList(q, "eventId", p.EventIDs)
 	setInt(q, "limit", p.Limit)
 	setInt(q, "offset", p.Offset)
 	setBool(q, "takerOnly", p.TakerOnly)
 	setString(q, "side", string(p.Side))
+	setString(q, "filterType", p.FilterType)
+	setString(q, "filterAmount", p.FilterAmount)
 	return q
 }
 

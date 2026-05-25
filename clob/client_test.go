@@ -334,6 +334,169 @@ func TestGetOpenOrdersPageSendsNextCursor(t *testing.T) {
 	}
 }
 
+func TestGetTradesPageUsesOfficialParamsAndEnvelope(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/data/trades" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+		q := r.URL.Query()
+		if q.Get("maker_address") != "0xmaker" || q.Get("market") != "0xabc" || q.Get("next_cursor") != "MA==" {
+			t.Fatalf("trade query = %s", r.URL.RawQuery)
+		}
+		if q.Get("maker") != "" || q.Get("taker") != "" {
+			t.Fatalf("unexpected legacy trade query = %s", r.URL.RawQuery)
+		}
+
+		_, _ = w.Write([]byte(`{
+			"data": [
+				{
+					"id":"trade-1",
+					"market":"0xabc",
+					"asset_id":"123",
+					"side":"BUY",
+					"size":"10",
+					"price":"0.42",
+					"match_time":"2024-05-01T12:00:00Z",
+					"err_msg":null
+				}
+			],
+			"limit": 100,
+			"count": 1,
+			"next_cursor": "LTE="
+		}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient(
+		srv.URL,
+		WithSigner(testKey()),
+		WithCredentials(Credentials{
+			Key:        "test-key",
+			Secret:     "c2VjcmV0",
+			Passphrase: "test-passphrase",
+		}),
+	)
+
+	page, err := client.GetTradesPage(context.Background(), TradeParams{
+		MakerAddress: "0xmaker",
+		Market:       "0xabc",
+		NextCursor:   "MA==",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.NextCursor != "LTE=" || len(page.Data) != 1 {
+		t.Fatalf("unexpected page: %+v", page)
+	}
+	if page.Data[0].ID != "trade-1" || page.Data[0].AssetID.String() != "123" {
+		t.Fatalf("unexpected trade: %+v", page.Data[0])
+	}
+}
+
+func TestGetTradesAggregatesPages(t *testing.T) {
+	var cursors []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/data/trades" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+		cursor := r.URL.Query().Get("next_cursor")
+		cursors = append(cursors, cursor)
+		switch cursor {
+		case "MA==":
+			_, _ = w.Write([]byte(`{"data":[{"id":"trade-1","asset_id":"1","match_time":"2024-05-01T12:00:00Z"}],"next_cursor":"cursor-2"}`))
+		case "cursor-2":
+			_, _ = w.Write([]byte(`{"data":[{"id":"trade-2","asset_id":"2","match_time":"2024-05-01T12:00:01Z"}],"next_cursor":"LTE="}`))
+		default:
+			t.Fatalf("unexpected cursor %q", cursor)
+		}
+	}))
+	defer srv.Close()
+
+	client := NewClient(
+		srv.URL,
+		WithSigner(testKey()),
+		WithCredentials(Credentials{
+			Key:        "test-key",
+			Secret:     "c2VjcmV0",
+			Passphrase: "test-passphrase",
+		}),
+	)
+
+	trades, err := client.GetTrades(context.Background(), TradeParams{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(trades) != 2 {
+		t.Fatalf("len(trades) = %d, want 2", len(trades))
+	}
+	if got := cursors; len(got) != 2 || got[0] != "MA==" || got[1] != "cursor-2" {
+		t.Fatalf("cursors = %v", got)
+	}
+}
+
+func TestGetMarketTradesEventsDecodesLiveActivityObject(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/markets/live-activity/0xabc" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+		_, _ = w.Write([]byte(`{
+			"condition_id":"0xabc",
+			"id":253591,
+			"question":"Will it happen?",
+			"market_slug":"will-it-happen",
+			"event_slug":"event",
+			"series_slug":"",
+			"icon":"https://example.com/icon.png",
+			"image":"https://example.com/image.png",
+			"tags":["All"]
+		}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL)
+	got, err := client.GetMarketTradesEvents(context.Background(), "0xabc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ConditionID != "0xabc" || got.Question != "Will it happen?" || len(got.Events) != 0 {
+		t.Fatalf("unexpected live activity: %+v", got)
+	}
+	if len(got.Raw) == 0 {
+		t.Fatal("Raw is empty")
+	}
+}
+
+func TestGetMarketTradesEventsDecodesEventArray(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/markets/live-activity/0xabc" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+		_, _ = w.Write([]byte(`[{
+			"event_type":"trade",
+			"market":{"condition_id":"0xabc","asset_id":"123","question":"Q","icon":"icon","slug":"slug"},
+			"user":{"address":"0xuser","username":"alice","profile_picture":"p","optimized_profile_picture":"op","pseudonym":"a"},
+			"side":"BUY",
+			"size":"1",
+			"fee_rate_bps":"0",
+			"price":"0.42",
+			"outcome":"Yes",
+			"outcome_index":0,
+			"transaction_hash":"0xtx",
+			"timestamp":"2024-05-01T12:00:00Z"
+		}]`))
+	}))
+	defer srv.Close()
+
+	client := NewClient(srv.URL)
+	got, err := client.GetMarketTradesEvents(context.Background(), "0xabc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Events) != 1 || got.Events[0].Market.AssetID.String() != "123" {
+		t.Fatalf("unexpected events: %+v", got.Events)
+	}
+}
+
 func TestBuildOrder_UsesDefaultSignatureType(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.URL.Path != "/data/orders" {
