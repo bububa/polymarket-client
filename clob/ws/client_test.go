@@ -295,7 +295,7 @@ func TestDecodeMarketResolvedAcceptsAssetIDsVariant(t *testing.T) {
 }
 
 func TestDecodeOrderUsesDocumentedIDField(t *testing.T) {
-	event, err := DecodeEvent([]byte(`{"event_type":"order","id":"order-1","asset_id":"asset-1","market":"0xabc","price":"0.42","size":"10","side":"BUY","status":"LIVE"}`))
+	event, err := DecodeEvent([]byte(`{"event_type":"order","id":"order-1","asset_id":"asset-1","market":"0xabc","price":"0.42","side":"BUY","status":"LIVE"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -305,14 +305,54 @@ func TestDecodeOrderUsesDocumentedIDField(t *testing.T) {
 	}
 }
 
-func TestDecodeOrderAcceptsOrderIDCompat(t *testing.T) {
+func TestDecodeOrderPreservesDocumentedUserFields(t *testing.T) {
+	event, err := DecodeEvent([]byte(`{
+		"event_type": "order",
+		"id": "order-1",
+		"owner": "owner-1",
+		"market": "0xmarket",
+		"asset_id": "asset-1",
+		"side": "SELL",
+		"order_owner": "owner-2",
+		"original_size": "10",
+		"size_matched": "2.5",
+		"price": "0.57",
+		"associate_trades": ["trade-1"],
+		"outcome": "YES",
+		"type": "PLACEMENT",
+		"created_at": "1672290687",
+		"expiration": "1672299999",
+		"order_type": "GTD",
+		"status": "LIVE",
+		"maker_address": "0x1234",
+		"timestamp": "1672290687"
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := event.(*OrderEvent)
+	if got.OrderID != "order-1" || got.Owner != "owner-1" || got.OrderOwner != "owner-2" {
+		t.Fatalf("unexpected ownership fields: %#v", got)
+	}
+	if got.OriginalSize != clob.Float64(10) || got.SizeMatched != clob.Float64(2.5) {
+		t.Fatalf("sizes = %v/%v, want 10/2.5", got.OriginalSize, got.SizeMatched)
+	}
+	if len(got.AssociateTrades) != 1 || got.AssociateTrades[0] != "trade-1" {
+		t.Fatalf("AssociateTrades = %#v", got.AssociateTrades)
+	}
+	if got.Outcome != "YES" || got.Type != "PLACEMENT" || got.OrderType != clob.GTD || got.MakerAddress != "0x1234" {
+		t.Fatalf("documented fields not preserved: %#v", got)
+	}
+}
+
+func TestDecodeOrderDoesNotMapUndocumentedOrderIDAlias(t *testing.T) {
 	event, err := DecodeEvent([]byte(`{"event_type":"order","order_id":"order-1","asset_id":"asset-1","market":"0xabc","price":"0.42","size":"10","side":"BUY","status":"LIVE"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := event.(*OrderEvent)
-	if got.OrderID != "order-1" {
-		t.Fatalf("OrderID = %q, want order-1", got.OrderID)
+	if got.OrderID != "" {
+		t.Fatalf("OrderID = %q, want empty for undocumented order_id alias", got.OrderID)
 	}
 }
 
@@ -330,6 +370,95 @@ func TestMarshalOrderUsesDocumentedIDField(t *testing.T) {
 	}
 	if _, ok := raw["order_id"]; ok {
 		t.Fatalf("payload should not include order_id: %s", payload)
+	}
+}
+
+func TestDecodeTradePreservesDocumentedUserFields(t *testing.T) {
+	event, err := DecodeEvent([]byte(`{
+		"event_type": "trade",
+		"type": "TRADE",
+		"id": "trade-1",
+		"taker_order_id": "taker-order-1",
+		"market": "0xmarket",
+		"asset_id": "asset-1",
+		"side": "BUY",
+		"size": "10",
+		"price": "0.57",
+		"fee_rate_bps": "0",
+		"status": "MATCHED",
+		"matchtime": "1672290701",
+		"last_update": "1672290702",
+		"outcome": "YES",
+		"owner": "owner-1",
+		"trade_owner": "owner-2",
+		"maker_address": "0x1234",
+		"transaction_hash": "0xhash",
+		"bucket_index": 3,
+		"maker_orders": [
+			{
+				"order_id": "maker-order-1",
+				"owner": "maker-owner",
+				"maker_address": "0x5678",
+				"matched_amount": "10",
+				"price": "0.57",
+				"fee_rate_bps": "0",
+				"asset_id": "asset-1",
+				"outcome": "YES",
+				"side": "SELL"
+			}
+		],
+		"trader_side": "TAKER",
+		"timestamp": "1672290701"
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := event.(*TradeEvent)
+	if got.TradeID != "trade-1" || got.TakerOrderID != "taker-order-1" || got.Type != "TRADE" {
+		t.Fatalf("unexpected identifiers: %#v", got)
+	}
+	if got.Size != clob.Float64(10) || got.Price != clob.Float64(0.57) || got.FeeRateBps != 0 {
+		t.Fatalf("unexpected price/size fields: %#v", got)
+	}
+	if got.Status != TradeStatusMatched || got.Owner != "owner-1" || got.TradeOwner != "owner-2" {
+		t.Fatalf("unexpected status/owner fields: %#v", got)
+	}
+	if got.TransactionHash != "0xhash" || got.BucketIndex != clob.Int(3) || got.TraderSide != "TAKER" {
+		t.Fatalf("unexpected settlement fields: %#v", got)
+	}
+	if len(got.MakerOrders) != 1 || got.MakerOrders[0].OrderID != "maker-order-1" || got.MakerOrders[0].MatchedAmount != clob.Float64(10) {
+		t.Fatalf("MakerOrders = %#v", got.MakerOrders)
+	}
+}
+
+func TestDecodeTradeDoesNotMapUndocumentedAliases(t *testing.T) {
+	event, err := DecodeEvent([]byte(`{"event_type":"trade","trade_id":"trade-1","match_time":"1672290701"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := event.(*TradeEvent)
+	if got.TradeID != "" {
+		t.Fatalf("TradeID = %q, want empty for undocumented trade_id alias", got.TradeID)
+	}
+	if !got.MatchTime.IsZero() {
+		t.Fatalf("MatchTime = %s, want zero for undocumented match_time alias", got.MatchTime.Time())
+	}
+}
+
+func TestMarshalTradeUsesDocumentedIDField(t *testing.T) {
+	payload, err := json.Marshal(TradeEvent{TradeID: "trade-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(payload, &raw); err != nil {
+		t.Fatal(err)
+	}
+	if raw["id"] != "trade-1" {
+		t.Fatalf("id = %v, want trade-1", raw["id"])
+	}
+	if _, ok := raw["trade_id"]; ok {
+		t.Fatalf("payload should not include trade_id: %s", payload)
 	}
 }
 
