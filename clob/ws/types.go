@@ -180,50 +180,51 @@ type OrderEvent struct {
 	BaseEvent
 	// OrderID is the affected order identifier from the user-channel id field.
 	OrderID string `json:"id"`
+	// Owner is the API owner UUID.
+	Owner string `json:"owner"`
 	// AssetID is the conditional token identifier.
 	AssetID string `json:"asset_id"`
 	// Market is the condition ID.
 	Market string `json:"market"`
+	// OrderOwner is the owner UUID attached to the order.
+	OrderOwner string `json:"order_owner"`
 	// Price is the order price.
 	Price clob.Float64 `json:"price"`
-	// Size is the order quantity.
-	Size clob.Float64 `json:"size"`
+	// OriginalSize is the initial order quantity.
+	OriginalSize clob.Float64 `json:"original_size"`
+	// SizeMatched is the quantity already matched.
+	SizeMatched clob.Float64 `json:"size_matched"`
 	// Side is the order direction.
 	Side clob.Side `json:"side"`
+	// AssociateTrades lists trade IDs associated with this order.
+	AssociateTrades []string `json:"associate_trades"`
+	// Outcome is the outcome label.
+	Outcome string `json:"outcome"`
+	// Type identifies the order event action, such as PLACEMENT.
+	Type string `json:"type"`
+	// CreatedAt is when the order was created.
+	CreatedAt clob.Time `json:"created_at"`
+	// Expiration is the order expiry time.
+	Expiration clob.Time `json:"expiration"`
+	// OrderType is the order execution type.
+	OrderType clob.OrderType `json:"order_type"`
 	// Status is the updated order status.
 	Status OrderStatus `json:"status"`
-	// Reason explains why the order changed state.
-	Reason string `json:"reason,omitempty"`
+	// MakerAddress is the wallet address that owns the maker order.
+	MakerAddress string `json:"maker_address"`
 	// Timestamp is the event time.
 	Timestamp clob.Time `json:"timestamp"`
-}
-
-// UnmarshalJSON decodes the documented user-channel id field into OrderID.
-func (e *OrderEvent) UnmarshalJSON(data []byte) error {
-	type alias OrderEvent
-	aux := struct {
-		*alias
-		ID            string `json:"id"`
-		OrderIDCompat string `json:"order_id"`
-	}{
-		alias: (*alias)(e),
-	}
-	if err := json.Unmarshal(data, &aux); err != nil {
-		return err
-	}
-	if aux.ID != "" {
-		e.OrderID = aux.ID
-	} else if aux.OrderIDCompat != "" {
-		e.OrderID = aux.OrderIDCompat
-	}
-	return nil
 }
 
 // TradeEvent carries a matched trade notification.
 type TradeEvent struct {
 	BaseEvent
-	// TradeID is the trade identifier.
-	TradeID string `json:"trade_id"`
+	// Type identifies the trade event action, such as TRADE.
+	Type string `json:"type"`
+	// TradeID is the trade identifier from the user-channel id field.
+	TradeID string `json:"id"`
+	// TakerOrderID is the taker's order identifier.
+	TakerOrderID string `json:"taker_order_id"`
 	// AssetID is the conditional token identifier.
 	AssetID string `json:"asset_id"`
 	// Market is the condition ID.
@@ -234,8 +235,30 @@ type TradeEvent struct {
 	Size clob.Float64 `json:"size"`
 	// Side is the trade direction.
 	Side clob.Side `json:"side"`
+	// FeeRateBps is the fee rate in basis points.
+	FeeRateBps clob.Float64 `json:"fee_rate_bps"`
 	// Status is the trade processing status.
 	Status TradeStatus `json:"status"`
+	// MatchTime is when the trade matched. The user-channel field is matchtime.
+	MatchTime clob.Time `json:"matchtime"`
+	// LastUpdate is the last status update time.
+	LastUpdate clob.Time `json:"last_update"`
+	// Outcome is the outcome label.
+	Outcome string `json:"outcome"`
+	// Owner is the API owner UUID.
+	Owner string `json:"owner"`
+	// TradeOwner is the trade owner UUID.
+	TradeOwner string `json:"trade_owner"`
+	// MakerAddress is the maker wallet address from the event.
+	MakerAddress string `json:"maker_address"`
+	// TransactionHash is the on-chain transaction hash when available.
+	TransactionHash string `json:"transaction_hash"`
+	// BucketIndex is the price bucket index.
+	BucketIndex clob.Int `json:"bucket_index"`
+	// MakerOrders lists maker orders matched by this trade.
+	MakerOrders []clob.MakerOrder `json:"maker_orders"`
+	// TraderSide identifies whether this user's order was MAKER or TAKER.
+	TraderSide string `json:"trader_side"`
 	// Timestamp is the event time.
 	Timestamp clob.Time `json:"timestamp"`
 }
@@ -339,8 +362,14 @@ type MarketResolvedEvent struct {
 type OrderStatus string
 
 const (
+	// OrderStatusLive is an active user-channel order.
+	OrderStatusLive OrderStatus = "LIVE"
 	// OrderStatusOpen is an active unfilled order.
 	OrderStatusOpen OrderStatus = "OPEN"
+	// OrderStatusMatched has been matched by the matching engine.
+	OrderStatusMatched OrderStatus = "MATCHED"
+	// OrderStatusConfirmed has been confirmed on-chain.
+	OrderStatusConfirmed OrderStatus = "CONFIRMED"
 	// OrderStatusCanceled has been canceled by the user.
 	OrderStatusCanceled OrderStatus = "CANCELED"
 	// OrderStatusFilled is fully matched.
@@ -357,8 +386,8 @@ const (
 type TradeStatus string
 
 const (
-	// TradeStatusMatched is a completed trade.
-	TradeStatusMatched TradeStatus = "matched"
+	// TradeStatusMatched is a matched user-channel trade.
+	TradeStatusMatched TradeStatus = "MATCHED"
 	// TradeStatusRetrying is being re-submitted.
 	TradeStatusRetrying TradeStatus = "RETRYING"
 	// TradeStatusFailed was rejected or failed processing.
