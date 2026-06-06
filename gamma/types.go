@@ -169,8 +169,12 @@ type Tag struct {
 	Slug        string          `json:"slug"`
 	ForceShow   bool            `json:"forceShow"`
 	PublishedAt pmtypes.Time    `json:"publishedAt"`
+	CreatedBy   pmtypes.Int     `json:"createdBy"`
+	UpdatedBy   pmtypes.Int     `json:"updatedBy"`
 	CreatedAt   pmtypes.Time    `json:"createdAt"`
 	UpdatedAt   pmtypes.Time    `json:"updatedAt"`
+	ForceHide   bool            `json:"forceHide"`
+	IsCarousel  bool            `json:"isCarousel"`
 	Raw         json.RawMessage `json:"-"`
 }
 
@@ -397,6 +401,242 @@ func (p MarketFilterParams) appendQuery(q url.Values) {
 
 // EventFilterParams is an alias for MarketFilterParams.
 type EventFilterParams = MarketFilterParams
+
+// MarketKeysetPage contains a cursor-paginated market page.
+type MarketKeysetPage struct {
+	Markets    []Market `json:"markets"`
+	NextCursor string   `json:"next_cursor"`
+}
+
+// MarketKeysetParams filters GET /markets/keyset requests.
+type MarketKeysetParams struct {
+	// Limit sets the maximum number of results, up to 100.
+	Limit int
+	// Order is a comma-separated list of JSON field names to order by.
+	Order string
+	// Ascending sets the sort direction when Order is set.
+	Ascending *bool
+	// AfterCursor is the cursor returned as next_cursor by the previous page.
+	AfterCursor string
+	// IDs filters by market IDs.
+	IDs []int
+	// Slugs filters by market slugs.
+	Slugs []string
+	// Closed filters by closed status.
+	Closed *bool
+	// Decimalized filters by decimalized status.
+	Decimalized *bool
+	// ClobTokenIDs filters by conditional token IDs.
+	ClobTokenIDs []string
+	// ConditionIDs filters by condition IDs.
+	ConditionIDs []string
+	// QuestionIDs filters by question IDs.
+	QuestionIDs []string
+	// MarketMakerAddress filters by FPMM contract address.
+	MarketMakerAddress []string
+	// LiquidityNumMin filters by minimum numeric liquidity.
+	LiquidityNumMin *float64
+	// LiquidityNumMax filters by maximum numeric liquidity.
+	LiquidityNumMax *float64
+	// VolumeNumMin filters by minimum numeric volume.
+	VolumeNumMin *float64
+	// VolumeNumMax filters by maximum numeric volume.
+	VolumeNumMax *float64
+	// StartDateMin filters by minimum start date.
+	StartDateMin string
+	// StartDateMax filters by maximum start date.
+	StartDateMax string
+	// EndDateMin filters by minimum end date.
+	EndDateMin string
+	// EndDateMax filters by maximum end date.
+	EndDateMax string
+	// TagIDs filters by tag IDs.
+	TagIDs []int
+	// RelatedTags includes markets related to the supplied tags.
+	RelatedTags *bool
+	// TagMatch controls tag matching semantics.
+	TagMatch string
+	// CYOM filters by create-your-own-market status.
+	CYOM *bool
+	// RFQEnabled filters by RFQ status.
+	RFQEnabled *bool
+	// UMAResolutionStatus filters by UMA resolution status.
+	UMAResolutionStatus string
+	// GameID filters by game ID.
+	GameID string
+	// SportsMarketTypes filters by sports market type identifiers.
+	SportsMarketTypes []string
+	// IncludeTag includes Tags relation on each market.
+	IncludeTag *bool
+	// Locale sets the localized response language.
+	Locale string
+}
+
+func (p MarketKeysetParams) appendQuery(q url.Values) {
+	setInt(q, "limit", p.Limit)
+	setString(q, "order", p.Order)
+	setBool(q, "ascending", p.Ascending)
+	setString(q, "after_cursor", p.AfterCursor)
+	setIntSlice(q, "id", p.IDs)
+	setStringSlice(q, "slug", p.Slugs)
+	setBool(q, "closed", p.Closed)
+	setBool(q, "decimalized", p.Decimalized)
+	setStringSlice(q, "clob_token_ids", p.ClobTokenIDs)
+	setStringSlice(q, "condition_ids", p.ConditionIDs)
+	setStringSlice(q, "question_ids", p.QuestionIDs)
+	setStringSlice(q, "market_maker_address", p.MarketMakerAddress)
+	setFloat(q, "liquidity_num_min", p.LiquidityNumMin)
+	setFloat(q, "liquidity_num_max", p.LiquidityNumMax)
+	setFloat(q, "volume_num_min", p.VolumeNumMin)
+	setFloat(q, "volume_num_max", p.VolumeNumMax)
+	setString(q, "start_date_min", p.StartDateMin)
+	setString(q, "start_date_max", p.StartDateMax)
+	setString(q, "end_date_min", p.EndDateMin)
+	setString(q, "end_date_max", p.EndDateMax)
+	setIntSlice(q, "tag_id", p.TagIDs)
+	setBool(q, "related_tags", p.RelatedTags)
+	setString(q, "tag_match", p.TagMatch)
+	setBool(q, "cyom", p.CYOM)
+	setBool(q, "rfq_enabled", p.RFQEnabled)
+	setString(q, "uma_resolution_status", p.UMAResolutionStatus)
+	setString(q, "game_id", p.GameID)
+	setStringSlice(q, "sports_market_types", p.SportsMarketTypes)
+	setBool(q, "include_tag", p.IncludeTag)
+	setString(q, "locale", p.Locale)
+}
+
+// EventKeysetPage contains a cursor-paginated event page.
+type EventKeysetPage struct {
+	Events     []Event `json:"events"`
+	NextCursor string  `json:"next_cursor"`
+}
+
+// EventKeysetParams filters GET /events/keyset requests.
+type EventKeysetParams struct {
+	// Limit sets the maximum number of results, up to 500.
+	Limit int
+	// Order is a comma-separated list of JSON field names to order by.
+	Order string
+	// Ascending sets the sort direction when Order is set.
+	Ascending *bool
+	// AfterCursor is the cursor returned as next_cursor by the previous page.
+	AfterCursor string
+	// IDs filters by event IDs.
+	IDs []int
+	// Slugs filters by event slugs.
+	Slugs []string
+	// Closed filters by closed status.
+	Closed *bool
+	// Live filters by live status.
+	Live *bool
+	// Featured filters by featured status.
+	Featured *bool
+	// CYOM filters by create-your-own-market status.
+	CYOM *bool
+	// TitleSearch filters by title search text.
+	TitleSearch string
+	// LiquidityMin filters by minimum liquidity.
+	LiquidityMin *float64
+	// LiquidityMax filters by maximum liquidity.
+	LiquidityMax *float64
+	// VolumeMin filters by minimum volume.
+	VolumeMin *float64
+	// VolumeMax filters by maximum volume.
+	VolumeMax *float64
+	// StartDateMin filters by minimum start date.
+	StartDateMin string
+	// StartDateMax filters by maximum start date.
+	StartDateMax string
+	// EndDateMin filters by minimum end date.
+	EndDateMin string
+	// EndDateMax filters by maximum end date.
+	EndDateMax string
+	// StartTimeMin filters by minimum start time.
+	StartTimeMin string
+	// StartTimeMax filters by maximum start time.
+	StartTimeMax string
+	// TagIDs filters by tag IDs.
+	TagIDs []int
+	// TagSlug filters by tag slug.
+	TagSlug string
+	// ExcludeTagIDs excludes matching tag IDs.
+	ExcludeTagIDs []int
+	// RelatedTags includes events related to the supplied tags.
+	RelatedTags *bool
+	// TagMatch controls tag matching semantics.
+	TagMatch string
+	// SeriesIDs filters by series IDs.
+	SeriesIDs []int
+	// GameIDs filters by game IDs.
+	GameIDs []int
+	// EventDate filters by event date.
+	EventDate string
+	// EventWeek filters by event week.
+	EventWeek int
+	// FeaturedOrder filters by featured-order status.
+	FeaturedOrder *bool
+	// Recurrence filters by recurrence.
+	Recurrence string
+	// CreatedBy filters by creator IDs.
+	CreatedBy []string
+	// ParentEventID filters by parent event ID.
+	ParentEventID int
+	// IncludeChildren includes child events.
+	IncludeChildren *bool
+	// PartnerSlug attaches external partners to matching events.
+	PartnerSlug string
+	// IncludeChat includes Chats and Series.Chats relations.
+	IncludeChat *bool
+	// IncludeTemplate includes Templates relation.
+	IncludeTemplate *bool
+	// IncludeBestLines includes BestLines relation.
+	IncludeBestLines *bool
+	// Locale sets the localized response language.
+	Locale string
+}
+
+func (p EventKeysetParams) appendQuery(q url.Values) {
+	setInt(q, "limit", p.Limit)
+	setString(q, "order", p.Order)
+	setBool(q, "ascending", p.Ascending)
+	setString(q, "after_cursor", p.AfterCursor)
+	setIntSlice(q, "id", p.IDs)
+	setStringSlice(q, "slug", p.Slugs)
+	setBool(q, "closed", p.Closed)
+	setBool(q, "live", p.Live)
+	setBool(q, "featured", p.Featured)
+	setBool(q, "cyom", p.CYOM)
+	setString(q, "title_search", p.TitleSearch)
+	setFloat(q, "liquidity_min", p.LiquidityMin)
+	setFloat(q, "liquidity_max", p.LiquidityMax)
+	setFloat(q, "volume_min", p.VolumeMin)
+	setFloat(q, "volume_max", p.VolumeMax)
+	setString(q, "start_date_min", p.StartDateMin)
+	setString(q, "start_date_max", p.StartDateMax)
+	setString(q, "end_date_min", p.EndDateMin)
+	setString(q, "end_date_max", p.EndDateMax)
+	setString(q, "start_time_min", p.StartTimeMin)
+	setString(q, "start_time_max", p.StartTimeMax)
+	setIntSlice(q, "tag_id", p.TagIDs)
+	setString(q, "tag_slug", p.TagSlug)
+	setIntSlice(q, "exclude_tag_id", p.ExcludeTagIDs)
+	setBool(q, "related_tags", p.RelatedTags)
+	setString(q, "tag_match", p.TagMatch)
+	setIntSlice(q, "series_id", p.SeriesIDs)
+	setIntSlice(q, "game_id", p.GameIDs)
+	setString(q, "event_date", p.EventDate)
+	setInt(q, "event_week", p.EventWeek)
+	setBool(q, "featured_order", p.FeaturedOrder)
+	setString(q, "recurrence", p.Recurrence)
+	setStringSlice(q, "created_by", p.CreatedBy)
+	setInt(q, "parent_event_id", p.ParentEventID)
+	setBool(q, "include_children", p.IncludeChildren)
+	setString(q, "partner_slug", p.PartnerSlug)
+	setBool(q, "include_chat", p.IncludeChat)
+	setBool(q, "include_template", p.IncludeTemplate)
+	setBool(q, "include_best_lines", p.IncludeBestLines)
+	setString(q, "locale", p.Locale)
+}
 
 // SeriesFilterParams filters GET /series requests.
 type SeriesFilterParams struct {

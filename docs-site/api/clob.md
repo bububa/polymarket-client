@@ -57,6 +57,7 @@ Go client for Polymarket CLOB v2 API.
 | `GetTrades` | User trade history |
 | `IsOrderScoring` | Check order scoring |
 | `AreOrdersScoring` | Batch scoring check |
+| `SendHeartbeat` | Send heartbeat (`POST /heartbeats`) |
 
 ## RFQ (AuthL2)
 

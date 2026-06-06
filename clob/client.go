@@ -550,14 +550,10 @@ func (c *Client) AreOrdersScoring(ctx context.Context, orderIDs []string) (map[s
 	return out, c.do(ctx, http.MethodPost, "/orders-scoring", nil, map[string][]string{"orderIds": orderIDs}, 2, &out)
 }
 
-// PostHeartbeat sends a heartbeat signal to maintain an active connection state.
+// SendHeartbeat sends a heartbeat signal to maintain active session status.
 // Requires L2 auth.
-func (c *Client) PostHeartbeat(ctx context.Context, heartbeatID string, out *HeartbeatResponse) error {
-	body := map[string]string{}
-	if heartbeatID != "" {
-		body["heartbeat_id"] = heartbeatID
-	}
-	return c.do(ctx, http.MethodPost, "/v1/heartbeats", nil, body, 2, out)
+func (c *Client) SendHeartbeat(ctx context.Context, out *HeartbeatResponse) error {
+	return c.do(ctx, http.MethodPost, "/heartbeats", nil, nil, 2, out)
 }
 
 // GetEarningsForUserForDay returns the user's reward earnings for a specific date.
