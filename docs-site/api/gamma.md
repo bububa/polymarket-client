@@ -18,12 +18,14 @@ client := gamma.New(gamma.Config{})
 | `GetMarket` | Market by ID or slug (pre-allocation) |
 | `GetMarketBySlug` | Market by slug (pre-allocation) |
 | `GetMarkets` | Filtered market list |
+| `ListMarketsKeyset` | Cursor-paginated market list (`GET /markets/keyset`) |
 | `GetEvent` | Event by ID or slug (pre-allocation) |
 | `GetEventBySlug` | Event by slug (pre-allocation) |
 | `GetEvents` | Filtered event list |
+| `ListEventsKeyset` | Cursor-paginated event list (`GET /events/keyset`) |
 | `Search` | Full-text search across markets, events, series, tags |
 | `ListSeries` / `GetSeries` | Series listing and detail |
-| `GetTags` / `GetTag` / `GetTagBySlug` | Tag management |
+| `GetTags` / `GetTag` / `GetTagBySlug` / `GetEventTags` | Tag management |
 | `GetRelatedTags` / `GetRelatedTagRelationships` | Related tag discovery |
 | `GetSports` / `GetValidSportsMarketTypes` | Sports market metadata |
 | `GetTeams` | Sports teams |

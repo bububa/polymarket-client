@@ -3,6 +3,7 @@ package clob
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -494,6 +495,44 @@ func TestGetMarketTradesEventsDecodesEventArray(t *testing.T) {
 	}
 	if len(got.Events) != 1 || got.Events[0].Market.AssetID.String() != "123" {
 		t.Fatalf("unexpected events: %+v", got.Events)
+	}
+}
+
+func TestSendHeartbeatUsesCurrentEndpointWithoutBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/heartbeats" {
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.String())
+		}
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(body) != 0 {
+			t.Fatalf("body = %q, want empty", string(body))
+		}
+		if r.Header.Get("POLY_API_KEY") != "test-key" {
+			t.Fatalf("missing L2 auth headers: %#v", r.Header)
+		}
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	}))
+	defer srv.Close()
+
+	client := NewClient(
+		srv.URL,
+		WithSigner(testKey()),
+		WithCredentials(Credentials{
+			Key:        "test-key",
+			Secret:     "c2VjcmV0",
+			Passphrase: "test-passphrase",
+		}),
+	)
+
+	var out HeartbeatResponse
+	if err := client.SendHeartbeat(context.Background(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Status != "ok" {
+		t.Fatalf("status = %q, want ok", out.Status)
 	}
 }
 

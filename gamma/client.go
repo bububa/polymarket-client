@@ -74,6 +74,12 @@ func (c *Client) GetMarkets(ctx context.Context, params MarketFilterParams) ([]M
 	return out, c.http.GetJSON(ctx, "/markets", filterValues(params), polyhttp.AuthNone, &out)
 }
 
+// ListMarketsKeyset returns markets using cursor-based keyset pagination.
+func (c *Client) ListMarketsKeyset(ctx context.Context, params MarketKeysetParams) (MarketKeysetPage, error) {
+	var out MarketKeysetPage
+	return out, c.http.GetJSON(ctx, "/markets/keyset", filterValues(params), polyhttp.AuthNone, &out)
+}
+
 // GetEvent writes an event into out using out.ID, or out.Slug when ID is empty.
 func (c *Client) GetEvent(ctx context.Context, out *Event) error {
 	if out == nil {
@@ -100,6 +106,12 @@ func (c *Client) GetEventBySlug(ctx context.Context, out *Event) error {
 func (c *Client) GetEvents(ctx context.Context, params EventFilterParams) ([]Event, error) {
 	var out []Event
 	return out, c.http.GetJSON(ctx, "/events", filterValues(params), polyhttp.AuthNone, &out)
+}
+
+// ListEventsKeyset returns events using cursor-based keyset pagination.
+func (c *Client) ListEventsKeyset(ctx context.Context, params EventKeysetParams) (EventKeysetPage, error) {
+	var out EventKeysetPage
+	return out, c.http.GetJSON(ctx, "/events/keyset", filterValues(params), polyhttp.AuthNone, &out)
 }
 
 // Search writes market, event, and public-profile matches into out.
@@ -130,6 +142,15 @@ func (c *Client) GetSeries(ctx context.Context, out *Series) error {
 func (c *Client) GetTags(ctx context.Context) ([]Tag, error) {
 	var out []Tag
 	return out, c.http.GetJSON(ctx, "/tags", nil, polyhttp.AuthNone, &out)
+}
+
+// GetEventTags returns tags attached to an event.
+func (c *Client) GetEventTags(ctx context.Context, eventID int) ([]Tag, error) {
+	if eventID == 0 {
+		return nil, errMissingIdentifier
+	}
+	var out []Tag
+	return out, c.http.GetJSON(ctx, "/events/"+strconv.Itoa(eventID)+"/tags", nil, polyhttp.AuthNone, &out)
 }
 
 // GetTag writes a tag into out using out.ID, or out.Slug when ID is empty.
@@ -239,8 +260,28 @@ func setInt(q url.Values, key string, val int) {
 	}
 }
 
+func setIntSlice(q url.Values, key string, vals []int) {
+	for _, val := range vals {
+		q.Add(key, strconv.Itoa(val))
+	}
+}
+
 func setString(q url.Values, key, val string) {
 	if val != "" {
 		q.Set(key, val)
+	}
+}
+
+func setStringSlice(q url.Values, key string, vals []string) {
+	for _, val := range vals {
+		if val != "" {
+			q.Add(key, val)
+		}
+	}
+}
+
+func setFloat(q url.Values, key string, val *float64) {
+	if val != nil {
+		q.Set(key, strconv.FormatFloat(*val, 'f', -1, 64))
 	}
 }

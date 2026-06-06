@@ -149,6 +149,9 @@ import "github.com/bububa/polymarket-client/gamma"
 
 gammaClient := gamma.New(gamma.Config{})
 markets, _ := gammaClient.GetMarkets(ctx, gamma.MarketFilterParams{/* ... */})
+eventPage, _ := gammaClient.ListEventsKeyset(ctx, gamma.EventKeysetParams{Limit: 100})
+marketPage, _ := gammaClient.ListMarketsKeyset(ctx, gamma.MarketKeysetParams{Limit: 100})
+eventTags, _ := gammaClient.GetEventTags(ctx, 123)
 
 // Relayer API — submit signed transactions (L1 auth via API key)
 import "github.com/bububa/polymarket-client/relayer"
@@ -502,7 +505,7 @@ err = client.UpdateBalanceAllowance(ctx, clob.BalanceAllowanceParams{
 | `UpdateBalanceAllowance` | `/balance-allowance/update`  | Update token allowance                        |
 | `GetNotifications`       | `/notifications`             | User notifications                            |
 | `DropNotifications`      | `/notifications`             | Mark notifications read                       |
-| `PostHeartbeat`          | `/v1/heartbeats`             | Send heartbeat                                |
+| `SendHeartbeat`          | `/heartbeats`                | Send heartbeat                                |
 
 ### Auth & Account Management
 

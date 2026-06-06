@@ -1061,8 +1061,8 @@ type BuilderFeeRate struct {
 
 // HeartbeatResponse is returned by the heartbeat endpoint.
 type HeartbeatResponse struct {
-	// HeartbeatID is the unique heartbeat identifier.
-	HeartbeatID string `json:"heartbeat_id"`
+	// Status is the heartbeat acknowledgement status.
+	Status string `json:"status"`
 	// Error contains error details on failure.
 	Error string `json:"error"`
 }
