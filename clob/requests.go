@@ -102,7 +102,11 @@ type RewardsMarketsMultiParams struct {
 	Q string `url:"q,omitempty"`
 	// TagSlugs filters by tag slug. Multiple values are ORed by the API.
 	TagSlugs []string `url:"tag_slug,omitempty"`
+	// EventID filters by event ID. Multiple values are ORed by the API.
+	EventID []string `url:"event_id,omitempty"`
 	// EventIDs filters by event ID. Multiple values are ORed by the API.
+	//
+	// Deprecated: use EventID to match the official string query parameter.
 	EventIDs []Int `url:"event_id,omitempty"`
 	// EventTitle searches event titles case-insensitively.
 	EventTitle string `url:"event_title,omitempty"`

@@ -942,9 +942,10 @@ func TestRewardsMarketsMultiUsesOfficialParams(t *testing.T) {
 			len(q["tag_slug"]) != 2 ||
 			q["tag_slug"][0] != "sports" ||
 			q["tag_slug"][1] != "politics" ||
-			len(q["event_id"]) != 2 ||
+			len(q["event_id"]) != 3 ||
 			q["event_id"][0] != "100" ||
 			q["event_id"][1] != "200" ||
+			q["event_id"][2] != "300" ||
 			q.Get("event_title") != "US election" ||
 			q.Get("order_by") != "rate_per_day" ||
 			q.Get("position") != "DESC" ||
@@ -967,7 +968,8 @@ func TestRewardsMarketsMultiUsesOfficialParams(t *testing.T) {
 	if err := client.GetRewardsMarketsMulti(context.Background(), RewardsMarketsMultiParams{
 		Q:            "election",
 		TagSlugs:     []string{"sports", "politics"},
-		EventIDs:     []Int{100, 200},
+		EventID:      []string{"100", "200"},
+		EventIDs:     []Int{300},
 		EventTitle:   "US election",
 		OrderBy:      "rate_per_day",
 		Position:     "DESC",
