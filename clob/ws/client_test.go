@@ -92,6 +92,833 @@ func TestClientSubscribesAndDecodesEvents(t *testing.T) {
 	}
 }
 
+func TestSubscribeOrderBookSendsDynamicSubscribeUpdate(t *testing.T) {
+	gotFrame := make(chan map[string]any, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{})
+		if err != nil {
+			t.Errorf("accept: %v", err)
+			return
+		}
+		defer conn.Close(websocket.StatusNormalClosure, "")
+
+		ctx := context.Background()
+		for range 2 {
+			frame, err := readMarketFrame(ctx, conn)
+			if err != nil {
+				t.Errorf("read subscription frame: %v", err)
+				return
+			}
+			gotFrame <- frame
+		}
+	}))
+	defer server.Close()
+
+	url := "ws" + strings.TrimPrefix(server.URL, "http")
+	client := New(WithHost(url), WithAutoReconnect(false))
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := client.ConnectMarket(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	if err := client.SubscribeOrderBook(ctx, []string{"asset-a"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.SubscribeOrderBook(ctx, []string{"asset-b"}); err != nil {
+		t.Fatal(err)
+	}
+
+	initial := receiveMarketFrame(t, ctx, gotFrame)
+	if got := initial["type"]; got != string(ChannelMarket) {
+		t.Fatalf("initial type = %v, want %q", got, ChannelMarket)
+	}
+	if got := initial["initial_dump"]; got != true {
+		t.Fatalf("initial_dump = %v, want true", got)
+	}
+	assertFrameAssets(t, initial, []string{"asset-a"})
+
+	update := receiveMarketFrame(t, ctx, gotFrame)
+	if got := update["operation"]; got != "subscribe" {
+		t.Fatalf("operation = %v, want subscribe", got)
+	}
+	if got := update["initial_dump"]; got != true {
+		t.Fatalf("dynamic orderbook initial_dump = %v, want true", got)
+	}
+	if _, ok := update["type"]; ok {
+		t.Fatalf("dynamic subscribe update should omit type: %#v", update)
+	}
+	assertFrameAssets(t, update, []string{"asset-b"})
+}
+
+func TestUnsubscribeOrderBookSendsUnsubscribeUpdate(t *testing.T) {
+	gotFrame := make(chan map[string]any, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{})
+		if err != nil {
+			t.Errorf("accept: %v", err)
+			return
+		}
+		defer conn.Close(websocket.StatusNormalClosure, "")
+
+		ctx := context.Background()
+		for range 2 {
+			frame, err := readMarketFrame(ctx, conn)
+			if err != nil {
+				t.Errorf("read subscription frame: %v", err)
+				return
+			}
+			gotFrame <- frame
+		}
+	}))
+	defer server.Close()
+
+	url := "ws" + strings.TrimPrefix(server.URL, "http")
+	client := New(WithHost(url), WithAutoReconnect(false))
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := client.ConnectMarket(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	if err := client.SubscribeOrderBook(ctx, []string{"asset-a"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.UnsubscribeOrderBook(ctx, []string{"asset-a"}); err != nil {
+		t.Fatal(err)
+	}
+
+	_ = receiveMarketFrame(t, ctx, gotFrame)
+	update := receiveMarketFrame(t, ctx, gotFrame)
+	if got := update["operation"]; got != "unsubscribe" {
+		t.Fatalf("operation = %v, want unsubscribe", got)
+	}
+	if _, ok := update["type"]; ok {
+		t.Fatalf("unsubscribe update should omit type: %#v", update)
+	}
+	assertFrameAssets(t, update, []string{"asset-a"})
+}
+
+func TestOrderBookPartialUnsubscribeUpdatesReplayState(t *testing.T) {
+	gotInitial := make(chan map[string]any, 1)
+	gotUnsubscribe := make(chan map[string]any, 1)
+	gotReplay := make(chan map[string]any, 1)
+	var connCount atomic.Int64
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{})
+		if err != nil {
+			t.Errorf("accept: %v", err)
+			return
+		}
+
+		ctx := context.Background()
+		if connCount.Add(1) == 1 {
+			initial, err := readMarketFrame(ctx, conn)
+			if err != nil {
+				t.Errorf("read initial subscription: %v", err)
+				_ = conn.CloseNow()
+				return
+			}
+			gotInitial <- initial
+			unsub, err := readMarketFrame(ctx, conn)
+			if err != nil {
+				t.Errorf("read unsubscribe update: %v", err)
+				_ = conn.CloseNow()
+				return
+			}
+			gotUnsubscribe <- unsub
+			_ = conn.CloseNow()
+			return
+		}
+
+		replay, err := readMarketFrame(ctx, conn)
+		if err != nil {
+			t.Errorf("read replay subscription: %v", err)
+			_ = conn.CloseNow()
+			return
+		}
+		gotReplay <- replay
+		<-ctx.Done()
+	}))
+	defer server.Close()
+
+	url := "ws" + strings.TrimPrefix(server.URL, "http")
+	client := New(WithHost(url), WithHeartbeatInterval(0))
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	if err := client.ConnectMarket(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	if err := client.SubscribeOrderBook(ctx, []string{"asset-a", "asset-b"}); err != nil {
+		t.Fatal(err)
+	}
+	initial := receiveMarketFrame(t, ctx, gotInitial)
+	assertFrameAssets(t, initial, []string{"asset-a", "asset-b"})
+
+	if err := client.UnsubscribeOrderBook(ctx, []string{"asset-a"}); err != nil {
+		t.Fatal(err)
+	}
+	unsub := receiveMarketFrame(t, ctx, gotUnsubscribe)
+	if got := unsub["operation"]; got != "unsubscribe" {
+		t.Fatalf("operation = %v, want unsubscribe", got)
+	}
+	assertFrameAssets(t, unsub, []string{"asset-a"})
+
+	replay := receiveMarketFrame(t, ctx, gotReplay)
+	if got := replay["type"]; got != string(ChannelMarket) {
+		t.Fatalf("replay type = %v, want %q", got, ChannelMarket)
+	}
+	if _, ok := replay["operation"]; ok {
+		t.Fatalf("replay should be an initial subscription, got: %#v", replay)
+	}
+	assertFrameAssets(t, replay, []string{"asset-b"})
+}
+
+func TestOrderBookDynamicSubscribeUpdatesReplayState(t *testing.T) {
+	gotInitial := make(chan map[string]any, 1)
+	gotSubscribe := make(chan map[string]any, 1)
+	gotUnsubscribe := make(chan map[string]any, 1)
+	gotReplay := make(chan map[string]any, 1)
+	var connCount atomic.Int64
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{})
+		if err != nil {
+			t.Errorf("accept: %v", err)
+			return
+		}
+
+		ctx := context.Background()
+		if connCount.Add(1) == 1 {
+			initial, err := readMarketFrame(ctx, conn)
+			if err != nil {
+				t.Errorf("read initial subscription: %v", err)
+				_ = conn.CloseNow()
+				return
+			}
+			gotInitial <- initial
+			subscribe, err := readMarketFrame(ctx, conn)
+			if err != nil {
+				t.Errorf("read subscribe update: %v", err)
+				_ = conn.CloseNow()
+				return
+			}
+			gotSubscribe <- subscribe
+			unsubscribe, err := readMarketFrame(ctx, conn)
+			if err != nil {
+				t.Errorf("read unsubscribe update: %v", err)
+				_ = conn.CloseNow()
+				return
+			}
+			gotUnsubscribe <- unsubscribe
+			_ = conn.CloseNow()
+			return
+		}
+
+		replay, err := readMarketFrame(ctx, conn)
+		if err != nil {
+			t.Errorf("read replay subscription: %v", err)
+			_ = conn.CloseNow()
+			return
+		}
+		gotReplay <- replay
+		<-ctx.Done()
+	}))
+	defer server.Close()
+
+	url := "ws" + strings.TrimPrefix(server.URL, "http")
+	client := New(WithHost(url), WithHeartbeatInterval(0))
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	if err := client.ConnectMarket(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	if err := client.SubscribeOrderBook(ctx, []string{"asset-a"}); err != nil {
+		t.Fatal(err)
+	}
+	initial := receiveMarketFrame(t, ctx, gotInitial)
+	assertFrameAssets(t, initial, []string{"asset-a"})
+
+	if err := client.SubscribeOrderBook(ctx, []string{"asset-b"}); err != nil {
+		t.Fatal(err)
+	}
+	subscribe := receiveMarketFrame(t, ctx, gotSubscribe)
+	if got := subscribe["operation"]; got != "subscribe" {
+		t.Fatalf("operation = %v, want subscribe", got)
+	}
+	assertFrameAssets(t, subscribe, []string{"asset-b"})
+
+	if err := client.UnsubscribeOrderBook(ctx, []string{"asset-a"}); err != nil {
+		t.Fatal(err)
+	}
+	unsubscribe := receiveMarketFrame(t, ctx, gotUnsubscribe)
+	if got := unsubscribe["operation"]; got != "unsubscribe" {
+		t.Fatalf("operation = %v, want unsubscribe", got)
+	}
+	assertFrameAssets(t, unsubscribe, []string{"asset-a"})
+
+	replay := receiveMarketFrame(t, ctx, gotReplay)
+	if got := replay["type"]; got != string(ChannelMarket) {
+		t.Fatalf("replay type = %v, want %q", got, ChannelMarket)
+	}
+	if _, ok := replay["operation"]; ok {
+		t.Fatalf("replay should be an initial subscription, got: %#v", replay)
+	}
+	assertFrameAssets(t, replay, []string{"asset-b"})
+}
+
+func TestDuplicateOrderBookSubscribeReplaysOnce(t *testing.T) {
+	gotInitial := make(chan map[string]any, 1)
+	gotUnexpected := make(chan map[string]any, 1)
+	gotReplay := make(chan map[string]any, 1)
+	var connCount atomic.Int64
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{})
+		if err != nil {
+			t.Errorf("accept: %v", err)
+			return
+		}
+
+		ctx := context.Background()
+		if connCount.Add(1) == 1 {
+			initial, err := readMarketFrame(ctx, conn)
+			if err != nil {
+				t.Errorf("read initial subscription: %v", err)
+				_ = conn.CloseNow()
+				return
+			}
+			gotInitial <- initial
+
+			readCtx, cancel := context.WithTimeout(ctx, 150*time.Millisecond)
+			defer cancel()
+			if frame, err := readMarketFrame(readCtx, conn); err == nil {
+				gotUnexpected <- frame
+			}
+			_ = conn.CloseNow()
+			return
+		}
+
+		replay, err := readMarketFrame(ctx, conn)
+		if err != nil {
+			t.Errorf("read replay subscription: %v", err)
+			_ = conn.CloseNow()
+			return
+		}
+		gotReplay <- replay
+		<-ctx.Done()
+	}))
+	defer server.Close()
+
+	url := "ws" + strings.TrimPrefix(server.URL, "http")
+	client := New(WithHost(url), WithHeartbeatInterval(0))
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	if err := client.ConnectMarket(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	if err := client.SubscribeOrderBook(ctx, []string{"asset-a"}); err != nil {
+		t.Fatal(err)
+	}
+	initial := receiveMarketFrame(t, ctx, gotInitial)
+	assertFrameAssets(t, initial, []string{"asset-a"})
+
+	if err := client.SubscribeOrderBook(ctx, []string{"asset-a"}); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case frame := <-gotUnexpected:
+		t.Fatalf("duplicate subscribe sent unexpected frame: %#v", frame)
+	case <-time.After(250 * time.Millisecond):
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for duplicate subscribe check")
+	}
+
+	replay := receiveMarketFrame(t, ctx, gotReplay)
+	assertFrameAssets(t, replay, []string{"asset-a"})
+}
+
+func TestSubscribePricesSendsDynamicSubscribeUpdate(t *testing.T) {
+	gotFrame := make(chan map[string]any, 2)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{})
+		if err != nil {
+			t.Errorf("accept: %v", err)
+			return
+		}
+		defer conn.Close(websocket.StatusNormalClosure, "")
+
+		ctx := context.Background()
+		for range 2 {
+			frame, err := readMarketFrame(ctx, conn)
+			if err != nil {
+				t.Errorf("read subscription frame: %v", err)
+				return
+			}
+			gotFrame <- frame
+		}
+	}))
+	defer server.Close()
+
+	url := "ws" + strings.TrimPrefix(server.URL, "http")
+	client := New(WithHost(url), WithHeartbeatInterval(0), WithAutoReconnect(false))
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := client.ConnectMarket(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	if err := client.SubscribePrices(ctx, []string{"asset-a"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.SubscribePrices(ctx, []string{"asset-b"}); err != nil {
+		t.Fatal(err)
+	}
+
+	initial := receiveMarketFrame(t, ctx, gotFrame)
+	if got := initial["type"]; got != string(ChannelMarket) {
+		t.Fatalf("initial type = %v, want %q", got, ChannelMarket)
+	}
+	if _, ok := initial["initial_dump"]; ok {
+		t.Fatalf("prices initial subscription should not request initial_dump: %#v", initial)
+	}
+	assertFrameAssets(t, initial, []string{"asset-a"})
+
+	update := receiveMarketFrame(t, ctx, gotFrame)
+	if got := update["operation"]; got != "subscribe" {
+		t.Fatalf("operation = %v, want subscribe", got)
+	}
+	if _, ok := update["type"]; ok {
+		t.Fatalf("dynamic subscribe update should omit type: %#v", update)
+	}
+	assertFrameAssets(t, update, []string{"asset-b"})
+}
+
+func TestMarketSubscribeTrimsAndSkipsBlankAssetIDs(t *testing.T) {
+	gotFrame := make(chan map[string]any, 1)
+	server := newMarketFrameServer(t, gotFrame)
+	defer server.Close()
+
+	url := "ws" + strings.TrimPrefix(server.URL, "http")
+	client := New(WithHost(url), WithHeartbeatInterval(0), WithAutoReconnect(false))
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := client.ConnectMarket(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	if err := client.SubscribePrices(ctx, []string{" asset-b ", "", "asset-a", " ", "asset-b"}); err != nil {
+		t.Fatal(err)
+	}
+
+	initial := receiveMarketFrame(t, ctx, gotFrame)
+	assertFrameAssets(t, initial, []string{"asset-a", "asset-b"})
+}
+
+func TestOrderBookThenPricesUsesExistingConnectionUpdate(t *testing.T) {
+	gotFrame := make(chan map[string]any, 2)
+	var connCount atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{})
+		if err != nil {
+			t.Errorf("accept: %v", err)
+			return
+		}
+		defer conn.Close(websocket.StatusNormalClosure, "")
+		connCount.Add(1)
+
+		ctx := context.Background()
+		for range 2 {
+			frame, err := readMarketFrame(ctx, conn)
+			if err != nil {
+				t.Errorf("read subscription frame: %v", err)
+				return
+			}
+			gotFrame <- frame
+		}
+	}))
+	defer server.Close()
+
+	url := "ws" + strings.TrimPrefix(server.URL, "http")
+	client := New(WithHost(url), WithHeartbeatInterval(0), WithAutoReconnect(false))
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := client.ConnectMarket(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	if err := client.SubscribeOrderBook(ctx, []string{"asset-a"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.SubscribePrices(ctx, []string{"asset-b"}); err != nil {
+		t.Fatal(err)
+	}
+
+	initial := receiveMarketFrame(t, ctx, gotFrame)
+	assertFrameAssets(t, initial, []string{"asset-a"})
+	if got := initial["initial_dump"]; got != true {
+		t.Fatalf("initial_dump = %v, want true", got)
+	}
+
+	update := receiveMarketFrame(t, ctx, gotFrame)
+	if got := update["operation"]; got != "subscribe" {
+		t.Fatalf("operation = %v, want subscribe", got)
+	}
+	if _, ok := update["type"]; ok {
+		t.Fatalf("dynamic subscribe update should omit type: %#v", update)
+	}
+	assertFrameAssets(t, update, []string{"asset-b"})
+	if got := connCount.Load(); got != 1 {
+		t.Fatalf("connection count = %d, want 1", got)
+	}
+}
+
+func TestMarketHelperOwnershipKeepsAssetSubscribedUntilLastRef(t *testing.T) {
+	gotFrame := make(chan map[string]any, 4)
+	server := newMarketFrameServer(t, gotFrame)
+	defer server.Close()
+
+	url := "ws" + strings.TrimPrefix(server.URL, "http")
+	client := New(WithHost(url), WithHeartbeatInterval(0), WithAutoReconnect(false))
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := client.ConnectMarket(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	if err := client.SubscribePrices(ctx, []string{"asset-a"}); err != nil {
+		t.Fatal(err)
+	}
+	initial := receiveMarketFrame(t, ctx, gotFrame)
+	assertFrameAssets(t, initial, []string{"asset-a"})
+
+	if err := client.SubscribeOrderBook(ctx, []string{"asset-a"}); err != nil {
+		t.Fatal(err)
+	}
+	orderbookSubscribe := receiveMarketFrame(t, ctx, gotFrame)
+	if got := orderbookSubscribe["operation"]; got != "subscribe" {
+		t.Fatalf("operation = %v, want subscribe", got)
+	}
+	if got := orderbookSubscribe["initial_dump"]; got != true {
+		t.Fatalf("orderbook upgrade initial_dump = %v, want true", got)
+	}
+	assertFrameAssets(t, orderbookSubscribe, []string{"asset-a"})
+
+	if err := client.UnsubscribeOrderBook(ctx, []string{"asset-a"}); err != nil {
+		t.Fatal(err)
+	}
+	assertNoMarketFrame(t, gotFrame, 150*time.Millisecond)
+
+	if err := client.UnsubscribePrices(ctx, []string{"asset-a"}); err != nil {
+		t.Fatal(err)
+	}
+	unsubscribe := receiveMarketFrame(t, ctx, gotFrame)
+	if got := unsubscribe["operation"]; got != "unsubscribe" {
+		t.Fatalf("operation = %v, want unsubscribe", got)
+	}
+	assertFrameAssets(t, unsubscribe, []string{"asset-a"})
+}
+
+func TestCustomHelperEnablesCustomFeatureForExistingAsset(t *testing.T) {
+	gotFrame := make(chan map[string]any, 3)
+	server := newMarketFrameServer(t, gotFrame)
+	defer server.Close()
+
+	url := "ws" + strings.TrimPrefix(server.URL, "http")
+	client := New(WithHost(url), WithHeartbeatInterval(0), WithAutoReconnect(false))
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := client.ConnectMarket(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	if err := client.SubscribePrices(ctx, []string{"asset-a"}); err != nil {
+		t.Fatal(err)
+	}
+	initial := receiveMarketFrame(t, ctx, gotFrame)
+	assertFrameAssets(t, initial, []string{"asset-a"})
+	if _, ok := initial["custom_feature_enabled"]; ok {
+		t.Fatalf("prices initial subscription should not enable custom feature: %#v", initial)
+	}
+
+	if err := client.SubscribeBestBidAsk(ctx, []string{"asset-a"}); err != nil {
+		t.Fatal(err)
+	}
+	update := receiveMarketFrame(t, ctx, gotFrame)
+	if got := update["operation"]; got != "subscribe" {
+		t.Fatalf("operation = %v, want subscribe", got)
+	}
+	if got := update["custom_feature_enabled"]; got != true {
+		t.Fatalf("custom_feature_enabled = %v, want true", got)
+	}
+	if _, ok := update["type"]; ok {
+		t.Fatalf("custom feature update should omit type: %#v", update)
+	}
+	assertFrameAssets(t, update, []string{"asset-a"})
+}
+
+func TestCustomHelperInitialSubscribeEnablesCustomFeature(t *testing.T) {
+	gotFrame := make(chan map[string]any, 1)
+	server := newMarketFrameServer(t, gotFrame)
+	defer server.Close()
+
+	url := "ws" + strings.TrimPrefix(server.URL, "http")
+	client := New(WithHost(url), WithHeartbeatInterval(0), WithAutoReconnect(false))
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := client.ConnectMarket(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	if err := client.SubscribeBestBidAsk(ctx, []string{"asset-a"}); err != nil {
+		t.Fatal(err)
+	}
+	initial := receiveMarketFrame(t, ctx, gotFrame)
+	if got := initial["type"]; got != string(ChannelMarket) {
+		t.Fatalf("initial type = %v, want %q", got, ChannelMarket)
+	}
+	if got := initial["custom_feature_enabled"]; got != true {
+		t.Fatalf("custom_feature_enabled = %v, want true", got)
+	}
+	assertFrameAssets(t, initial, []string{"asset-a"})
+}
+
+func TestCustomHelperUnsubscribeKeepsNormalAssetSubscription(t *testing.T) {
+	gotFrame := make(chan map[string]any, 4)
+	server := newMarketFrameServer(t, gotFrame)
+	defer server.Close()
+
+	url := "ws" + strings.TrimPrefix(server.URL, "http")
+	client := New(WithHost(url), WithHeartbeatInterval(0), WithAutoReconnect(false))
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := client.ConnectMarket(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	if err := client.SubscribePrices(ctx, []string{"asset-a"}); err != nil {
+		t.Fatal(err)
+	}
+	_ = receiveMarketFrame(t, ctx, gotFrame)
+	if err := client.SubscribeBestBidAsk(ctx, []string{"asset-a"}); err != nil {
+		t.Fatal(err)
+	}
+	_ = receiveMarketFrame(t, ctx, gotFrame)
+
+	if err := client.UnsubscribeBestBidAsk(ctx, []string{"asset-a"}); err != nil {
+		t.Fatal(err)
+	}
+	assertNoMarketFrame(t, gotFrame, 150*time.Millisecond)
+
+	if err := client.UnsubscribePrices(ctx, []string{"asset-a"}); err != nil {
+		t.Fatal(err)
+	}
+	unsubscribe := receiveMarketFrame(t, ctx, gotFrame)
+	if got := unsubscribe["operation"]; got != "unsubscribe" {
+		t.Fatalf("operation = %v, want unsubscribe", got)
+	}
+	assertFrameAssets(t, unsubscribe, []string{"asset-a"})
+}
+
+func TestMixedMarketHelpersReconnectReplayCanonicalState(t *testing.T) {
+	gotInitial := make(chan map[string]any, 1)
+	gotPriceSubscribe := make(chan map[string]any, 1)
+	gotCustomSubscribe := make(chan map[string]any, 1)
+	gotPriceUnsubscribe := make(chan map[string]any, 1)
+	gotReplay := make(chan map[string]any, 1)
+	var connCount atomic.Int64
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{})
+		if err != nil {
+			t.Errorf("accept: %v", err)
+			return
+		}
+
+		ctx := context.Background()
+		if connCount.Add(1) == 1 {
+			initial, err := readMarketFrame(ctx, conn)
+			if err != nil {
+				t.Errorf("read initial subscription: %v", err)
+				_ = conn.CloseNow()
+				return
+			}
+			gotInitial <- initial
+			priceSubscribe, err := readMarketFrame(ctx, conn)
+			if err != nil {
+				t.Errorf("read price subscribe update: %v", err)
+				_ = conn.CloseNow()
+				return
+			}
+			gotPriceSubscribe <- priceSubscribe
+			customSubscribe, err := readMarketFrame(ctx, conn)
+			if err != nil {
+				t.Errorf("read custom subscribe update: %v", err)
+				_ = conn.CloseNow()
+				return
+			}
+			gotCustomSubscribe <- customSubscribe
+			priceUnsubscribe, err := readMarketFrame(ctx, conn)
+			if err != nil {
+				t.Errorf("read price unsubscribe update: %v", err)
+				_ = conn.CloseNow()
+				return
+			}
+			gotPriceUnsubscribe <- priceUnsubscribe
+			_ = conn.CloseNow()
+			return
+		}
+
+		replay, err := readMarketFrame(ctx, conn)
+		if err != nil {
+			t.Errorf("read replay subscription: %v", err)
+			_ = conn.CloseNow()
+			return
+		}
+		gotReplay <- replay
+		<-ctx.Done()
+	}))
+	defer server.Close()
+
+	url := "ws" + strings.TrimPrefix(server.URL, "http")
+	client := New(WithHost(url), WithHeartbeatInterval(0))
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	if err := client.ConnectMarket(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	if err := client.SubscribeOrderBook(ctx, []string{"asset-a"}); err != nil {
+		t.Fatal(err)
+	}
+	initial := receiveMarketFrame(t, ctx, gotInitial)
+	if got := initial["initial_dump"]; got != true {
+		t.Fatalf("initial_dump = %v, want true", got)
+	}
+	assertFrameAssets(t, initial, []string{"asset-a"})
+
+	if err := client.SubscribePrices(ctx, []string{"asset-b"}); err != nil {
+		t.Fatal(err)
+	}
+	priceSubscribe := receiveMarketFrame(t, ctx, gotPriceSubscribe)
+	if got := priceSubscribe["operation"]; got != "subscribe" {
+		t.Fatalf("operation = %v, want subscribe", got)
+	}
+	assertFrameAssets(t, priceSubscribe, []string{"asset-b"})
+
+	if err := client.SubscribeBestBidAsk(ctx, []string{"asset-a"}); err != nil {
+		t.Fatal(err)
+	}
+	customSubscribe := receiveMarketFrame(t, ctx, gotCustomSubscribe)
+	if got := customSubscribe["custom_feature_enabled"]; got != true {
+		t.Fatalf("custom_feature_enabled = %v, want true", got)
+	}
+	assertFrameAssets(t, customSubscribe, []string{"asset-a"})
+
+	if err := client.UnsubscribeOrderBook(ctx, []string{"asset-a"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.UnsubscribePrices(ctx, []string{"asset-b"}); err != nil {
+		t.Fatal(err)
+	}
+	priceUnsubscribe := receiveMarketFrame(t, ctx, gotPriceUnsubscribe)
+	if got := priceUnsubscribe["operation"]; got != "unsubscribe" {
+		t.Fatalf("operation = %v, want unsubscribe", got)
+	}
+	assertFrameAssets(t, priceUnsubscribe, []string{"asset-b"})
+
+	replay := receiveMarketFrame(t, ctx, gotReplay)
+	if got := replay["type"]; got != string(ChannelMarket) {
+		t.Fatalf("replay type = %v, want %q", got, ChannelMarket)
+	}
+	if _, ok := replay["operation"]; ok {
+		t.Fatalf("replay should be an initial subscription, got: %#v", replay)
+	}
+	if _, ok := replay["initial_dump"]; ok {
+		t.Fatalf("replay should omit initial_dump after orderbook unsubscribe: %#v", replay)
+	}
+	if got := replay["custom_feature_enabled"]; got != true {
+		t.Fatalf("replay custom_feature_enabled = %v, want true", got)
+	}
+	assertFrameAssets(t, replay, []string{"asset-a"})
+}
+
+func TestUserSubscriptionsStillReplayAfterReconnect(t *testing.T) {
+	gotInitial := make(chan UserSubscription, 1)
+	gotReplay := make(chan UserSubscription, 1)
+	var connCount atomic.Int64
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{})
+		if err != nil {
+			t.Errorf("accept: %v", err)
+			return
+		}
+		defer conn.Close(websocket.StatusNormalClosure, "")
+
+		ctx := context.Background()
+		var sub UserSubscription
+		if err := wsjson.Read(ctx, conn, &sub); err != nil {
+			t.Errorf("read user subscription: %v", err)
+			_ = conn.CloseNow()
+			return
+		}
+		if connCount.Add(1) == 1 {
+			gotInitial <- sub
+			_ = conn.CloseNow()
+			return
+		}
+
+		gotReplay <- sub
+		<-ctx.Done()
+	}))
+	defer server.Close()
+
+	url := "ws" + strings.TrimPrefix(server.URL, "http")
+	client := New(
+		WithHost(url),
+		WithHeartbeatInterval(0),
+		WithCredentials(&clob.Credentials{Key: "key", Secret: "secret", Passphrase: "passphrase"}),
+	)
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	if err := client.ConnectUser(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	if err := client.SubscribeOrders(ctx, []string{"condition-a"}); err != nil {
+		t.Fatal(err)
+	}
+	initial := receiveUserSubscription(t, ctx, gotInitial)
+	if initial.Type != ChannelUser || initial.Operation != "" || !sameStrings(initial.Markets, []string{"condition-a"}) {
+		t.Fatalf("unexpected initial user subscription: %#v", initial)
+	}
+
+	replay := receiveUserSubscription(t, ctx, gotReplay)
+	if replay.Type != ChannelUser || replay.Operation != "" || !sameStrings(replay.Markets, []string{"condition-a"}) {
+		t.Fatalf("unexpected replay user subscription: %#v", replay)
+	}
+}
+
 func TestUserSubscriptionRequiresCredentials(t *testing.T) {
 	client := New(WithAutoReconnect(false))
 	err := client.SubscribeOrders(context.Background(), []string{"condition"})
@@ -269,6 +1096,86 @@ func TestMarketSubscriptionUsesAssetsIDsWireField(t *testing.T) {
 	}
 	if _, ok := raw["asset_ids"]; ok {
 		t.Fatalf("payload should not use asset_ids: %s", payload)
+	}
+}
+
+func readMarketFrame(ctx context.Context, conn *websocket.Conn) (map[string]any, error) {
+	var frame map[string]any
+	if err := wsjson.Read(ctx, conn, &frame); err != nil {
+		return nil, err
+	}
+	return frame, nil
+}
+
+func newMarketFrameServer(t *testing.T, frames chan<- map[string]any) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{})
+		if err != nil {
+			t.Errorf("accept: %v", err)
+			return
+		}
+		defer conn.Close(websocket.StatusNormalClosure, "")
+
+		ctx := context.Background()
+		for {
+			frame, err := readMarketFrame(ctx, conn)
+			if err != nil {
+				return
+			}
+			frames <- frame
+		}
+	}))
+}
+
+func receiveMarketFrame(t *testing.T, ctx context.Context, frames <-chan map[string]any) map[string]any {
+	t.Helper()
+	select {
+	case frame := <-frames:
+		return frame
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for market subscription frame")
+		return nil
+	}
+}
+
+func receiveUserSubscription(t *testing.T, ctx context.Context, subs <-chan UserSubscription) UserSubscription {
+	t.Helper()
+	select {
+	case sub := <-subs:
+		return sub
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for user subscription")
+		return UserSubscription{}
+	}
+}
+
+func assertNoMarketFrame(t *testing.T, frames <-chan map[string]any, timeout time.Duration) {
+	t.Helper()
+	select {
+	case frame := <-frames:
+		t.Fatalf("unexpected market subscription frame: %#v", frame)
+	case <-time.After(timeout):
+	}
+}
+
+func assertFrameAssets(t *testing.T, frame map[string]any, want []string) {
+	t.Helper()
+	raw, ok := frame["assets_ids"].([]any)
+	if !ok {
+		t.Fatalf("assets_ids missing or wrong type: %#v", frame)
+	}
+	if len(raw) != len(want) {
+		t.Fatalf("assets_ids length = %d, want %d: %#v", len(raw), len(want), frame)
+	}
+	for idx, value := range raw {
+		got, ok := value.(string)
+		if !ok {
+			t.Fatalf("assets_ids[%d] = %T, want string: %#v", idx, value, frame)
+		}
+		if got != want[idx] {
+			t.Fatalf("assets_ids[%d] = %q, want %q: %#v", idx, got, want[idx], frame)
+		}
 	}
 }
 

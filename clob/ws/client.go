@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -53,23 +55,148 @@ type Client struct {
 	onReconnected  Callback
 	onDisconnected Callback
 
-	subsMu sync.RWMutex
-	subs   []subscription
+	marketMu   sync.Mutex
+	marketSubs marketSubscriptionState
+
+	userSubsMu sync.RWMutex
+	userSubs   []subscription
 }
 
-type subscriptionTarget uint8
+type subscription struct {
+	markets []string
+}
+
+type marketSubscriptionFeature uint8
 
 const (
-	subscriptionTargetMarket subscriptionTarget = iota
-	subscriptionTargetUser
+	marketFeatureOrderBook marketSubscriptionFeature = iota
+	marketFeaturePrices
+	marketFeatureLastTradePrice
+	marketFeatureTickSizeChange
+	marketFeatureMidpoints
+	marketFeatureBestBidAsk
+	marketFeatureNewMarkets
+	marketFeatureMarketResolutions
 )
 
-type subscription struct {
-	target               subscriptionTarget
-	assetIDs             []string
-	markets              []string
-	initialDump          bool
-	customFeatureEnabled bool
+type marketSubscriptionState struct {
+	assets map[string]map[marketSubscriptionFeature]int
+}
+
+type marketSubscriptionFrame struct {
+	Type                 Channel  `json:"type,omitempty"`
+	Operation            string   `json:"operation,omitempty"`
+	AssetIDs             []string `json:"assets_ids,omitempty"`
+	InitialDump          bool     `json:"initial_dump,omitempty"`
+	CustomFeatureEnabled bool     `json:"custom_feature_enabled,omitempty"`
+}
+
+func newMarketSubscriptionState() marketSubscriptionState {
+	return marketSubscriptionState{
+		assets: make(map[string]map[marketSubscriptionFeature]int),
+	}
+}
+
+func (f marketSubscriptionFeature) requiresInitialDump() bool {
+	return f == marketFeatureOrderBook
+}
+
+func (f marketSubscriptionFeature) requiresCustom() bool {
+	switch f {
+	case marketFeatureBestBidAsk, marketFeatureNewMarkets, marketFeatureMarketResolutions:
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *marketSubscriptionState) featureCount(assetID string, feature marketSubscriptionFeature) int {
+	refs := s.assets[assetID]
+	if refs == nil {
+		return 0
+	}
+	return refs[feature]
+}
+
+func (s *marketSubscriptionState) increment(assetID string, feature marketSubscriptionFeature) {
+	refs := s.assets[assetID]
+	if refs == nil {
+		refs = make(map[marketSubscriptionFeature]int)
+		s.assets[assetID] = refs
+	}
+	refs[feature]++
+}
+
+func (s *marketSubscriptionState) decrement(assetID string, feature marketSubscriptionFeature) {
+	refs := s.assets[assetID]
+	if refs == nil || refs[feature] == 0 {
+		return
+	}
+	if refs[feature] == 1 {
+		delete(refs, feature)
+	} else {
+		refs[feature]--
+	}
+	if len(refs) == 0 {
+		delete(s.assets, assetID)
+	}
+}
+
+func (s *marketSubscriptionState) assetActive(assetID string) bool {
+	return len(s.assets[assetID]) > 0
+}
+
+func (s *marketSubscriptionState) assetActiveExcludingFeature(assetID string, feature marketSubscriptionFeature) bool {
+	for existingFeature, count := range s.assets[assetID] {
+		if existingFeature != feature && count > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *marketSubscriptionState) assetCustomActive(assetID string) bool {
+	for feature, count := range s.assets[assetID] {
+		if count > 0 && feature.requiresCustom() {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *marketSubscriptionState) activeCount() int {
+	return len(s.assets)
+}
+
+func (s *marketSubscriptionState) activeAssetIDs() []string {
+	ids := make([]string, 0, len(s.assets))
+	for id, refs := range s.assets {
+		if len(refs) > 0 {
+			ids = append(ids, id)
+		}
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+func (s *marketSubscriptionState) initialDumpActive() bool {
+	for _, refs := range s.assets {
+		if refs[marketFeatureOrderBook] > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *marketSubscriptionState) customActive() bool {
+	for _, refs := range s.assets {
+		for feature, count := range refs {
+			if count > 0 && feature.requiresCustom() {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // New creates a CLOB WebSocket client.
@@ -91,6 +218,8 @@ func New(opts ...Option) *Client {
 		connected:    atomic.NewBool(false),
 		reconnecting: atomic.NewBool(false),
 		closed:       atomic.NewBool(false),
+
+		marketSubs: newMarketSubscriptionState(),
 	}
 	for _, opt := range opts {
 		opt(clt)
@@ -191,92 +320,92 @@ func (c *Client) Errors() <-chan error { return c.errs }
 
 // SubscribeOrderBook subscribes to order book snapshots and deltas for asset IDs.
 func (c *Client) SubscribeOrderBook(ctx context.Context, assetIDs []string) error {
-	return c.addAndSend(ctx, subscription{target: subscriptionTargetMarket, assetIDs: assetIDs, initialDump: true})
+	return c.subscribeMarketAssets(ctx, marketFeatureOrderBook, assetIDs)
 }
 
 // UnsubscribeOrderBook unsubscribes from order book events for asset IDs.
 func (c *Client) UnsubscribeOrderBook(ctx context.Context, assetIDs []string) error {
-	return c.removeAndSend(ctx, subscriptionTargetMarket, assetIDs)
+	return c.unsubscribeMarketAssets(ctx, marketFeatureOrderBook, assetIDs)
 }
 
 // SubscribeLastTradePrice subscribes to last-trade-price events for asset IDs.
 func (c *Client) SubscribeLastTradePrice(ctx context.Context, assetIDs []string) error {
-	return c.addAndSend(ctx, subscription{target: subscriptionTargetMarket, assetIDs: assetIDs})
+	return c.subscribeMarketAssets(ctx, marketFeatureLastTradePrice, assetIDs)
 }
 
 // SubscribePrices subscribes to price change events for asset IDs.
 func (c *Client) SubscribePrices(ctx context.Context, assetIDs []string) error {
-	return c.addAndSend(ctx, subscription{target: subscriptionTargetMarket, assetIDs: assetIDs})
+	return c.subscribeMarketAssets(ctx, marketFeaturePrices, assetIDs)
 }
 
 // UnsubscribePrices unsubscribes from price change events for asset IDs.
 func (c *Client) UnsubscribePrices(ctx context.Context, assetIDs []string) error {
-	return c.removeAndSend(ctx, subscriptionTargetMarket, assetIDs)
+	return c.unsubscribeMarketAssets(ctx, marketFeaturePrices, assetIDs)
 }
 
 // SubscribeTickSizeChange subscribes to tick-size-change events for asset IDs.
 func (c *Client) SubscribeTickSizeChange(ctx context.Context, assetIDs []string) error {
-	return c.addAndSend(ctx, subscription{target: subscriptionTargetMarket, assetIDs: assetIDs})
+	return c.subscribeMarketAssets(ctx, marketFeatureTickSizeChange, assetIDs)
 }
 
 // UnsubscribeTickSizeChange unsubscribes from tick-size-change events for asset IDs.
 func (c *Client) UnsubscribeTickSizeChange(ctx context.Context, assetIDs []string) error {
-	return c.removeAndSend(ctx, subscriptionTargetMarket, assetIDs)
+	return c.unsubscribeMarketAssets(ctx, marketFeatureTickSizeChange, assetIDs)
 }
 
 // SubscribeMidpoints subscribes to midpoint events for asset IDs.
 func (c *Client) SubscribeMidpoints(ctx context.Context, assetIDs []string) error {
-	return c.addAndSend(ctx, subscription{target: subscriptionTargetMarket, assetIDs: assetIDs})
+	return c.subscribeMarketAssets(ctx, marketFeatureMidpoints, assetIDs)
 }
 
 // UnsubscribeMidpoints unsubscribes from midpoint events for asset IDs.
 func (c *Client) UnsubscribeMidpoints(ctx context.Context, assetIDs []string) error {
-	return c.removeAndSend(ctx, subscriptionTargetMarket, assetIDs)
+	return c.unsubscribeMarketAssets(ctx, marketFeatureMidpoints, assetIDs)
 }
 
 // SubscribeBestBidAsk subscribes to best bid/ask events for asset IDs.
 func (c *Client) SubscribeBestBidAsk(ctx context.Context, assetIDs []string) error {
-	return c.addAndSend(ctx, subscription{target: subscriptionTargetMarket, assetIDs: assetIDs, customFeatureEnabled: true})
+	return c.subscribeMarketAssets(ctx, marketFeatureBestBidAsk, assetIDs)
 }
 
 // UnsubscribeBestBidAsk unsubscribes from best bid/ask events for asset IDs.
 func (c *Client) UnsubscribeBestBidAsk(ctx context.Context, assetIDs []string) error {
-	return c.removeAndSend(ctx, subscriptionTargetMarket, assetIDs)
+	return c.unsubscribeMarketAssets(ctx, marketFeatureBestBidAsk, assetIDs)
 }
 
 // UnsubscribeLastTradePrice unsubscribes from last-trade-price events for asset IDs.
 func (c *Client) UnsubscribeLastTradePrice(ctx context.Context, assetIDs []string) error {
-	return c.removeAndSend(ctx, subscriptionTargetMarket, assetIDs)
+	return c.unsubscribeMarketAssets(ctx, marketFeatureLastTradePrice, assetIDs)
 }
 
 // SubscribeNewMarkets subscribes to new market listing events.
 func (c *Client) SubscribeNewMarkets(ctx context.Context, assetIDs []string) error {
-	return c.addAndSend(ctx, subscription{target: subscriptionTargetMarket, assetIDs: assetIDs, customFeatureEnabled: true})
+	return c.subscribeMarketAssets(ctx, marketFeatureNewMarkets, assetIDs)
 }
 
 // UnsubscribeNewMarkets unsubscribes from new market listing events.
 func (c *Client) UnsubscribeNewMarkets(ctx context.Context, assetIDs []string) error {
-	return c.removeAndSend(ctx, subscriptionTargetMarket, assetIDs)
+	return c.unsubscribeMarketAssets(ctx, marketFeatureNewMarkets, assetIDs)
 }
 
 // SubscribeMarketResolutions subscribes to market resolution events.
 func (c *Client) SubscribeMarketResolutions(ctx context.Context, assetIDs []string) error {
-	return c.addAndSend(ctx, subscription{target: subscriptionTargetMarket, assetIDs: assetIDs, customFeatureEnabled: true})
+	return c.subscribeMarketAssets(ctx, marketFeatureMarketResolutions, assetIDs)
 }
 
 // UnsubscribeMarketResolutions unsubscribes from market resolution events.
 func (c *Client) UnsubscribeMarketResolutions(ctx context.Context, assetIDs []string) error {
-	return c.removeAndSend(ctx, subscriptionTargetMarket, assetIDs)
+	return c.unsubscribeMarketAssets(ctx, marketFeatureMarketResolutions, assetIDs)
 }
 
 // SubscribeUserEvents subscribes to all user order and trade events for markets.
 func (c *Client) SubscribeUserEvents(ctx context.Context, markets []string) error {
-	return c.addAndSend(ctx, subscription{target: subscriptionTargetUser, markets: markets})
+	return c.addUserAndSend(ctx, subscription{markets: markets})
 }
 
 // UnsubscribeUserEvents unsubscribes from user events for markets.
 func (c *Client) UnsubscribeUserEvents(ctx context.Context, markets []string) error {
-	return c.removeAndSend(ctx, subscriptionTargetUser, markets)
+	return c.removeUserAndSend(ctx, markets)
 }
 
 // SubscribeOrders subscribes to user order status events for markets.
@@ -299,62 +428,165 @@ func (c *Client) UnsubscribeTrades(ctx context.Context, markets []string) error 
 	return c.UnsubscribeUserEvents(ctx, markets)
 }
 
-func (c *Client) addAndSend(ctx context.Context, sub subscription) error {
-	c.subsMu.Lock()
-	c.subs = append(c.subs, sub)
-	c.subsMu.Unlock()
-	if err := c.sendSubscription(ctx, sub, ""); err != nil {
-		c.removeMatchingSubscription(sub)
+func (c *Client) replaySubscriptions(ctx context.Context) {
+	if err := c.replayMarketSubscription(ctx); err != nil {
+		c.sendErr(fmt.Errorf("polymarket: replay websocket market subscription: %w", err))
+	}
+
+	c.userSubsMu.RLock()
+	subs := append([]subscription(nil), c.userSubs...)
+	c.userSubsMu.RUnlock()
+	for _, sub := range subs {
+		if err := c.sendUserSubscription(ctx, sub, ""); err != nil {
+			c.sendErr(fmt.Errorf("polymarket: replay websocket user subscription: %w", err))
+		}
+	}
+}
+
+func (c *Client) subscribeMarketAssets(ctx context.Context, feature marketSubscriptionFeature, assetIDs []string) error {
+	ids := canonicalStrings(assetIDs)
+	if len(ids) == 0 {
+		return nil
+	}
+
+	c.marketMu.Lock()
+	defer c.marketMu.Unlock()
+
+	firstSubscribe := c.marketSubs.activeCount() == 0
+	newIDs := make([]string, 0, len(ids))
+	initialDumpIDs := make([]string, 0, len(ids))
+	customEnableIDs := make([]string, 0, len(ids))
+	for _, id := range ids {
+		assetActive := c.marketSubs.assetActive(id)
+		if !assetActive {
+			newIDs = append(newIDs, id)
+		}
+		if feature.requiresInitialDump() && c.marketSubs.featureCount(id, feature) == 0 {
+			initialDumpIDs = append(initialDumpIDs, id)
+		}
+		if feature.requiresCustom() && !c.marketSubs.assetCustomActive(id) {
+			customEnableIDs = append(customEnableIDs, id)
+		}
+	}
+
+	operation := "subscribe"
+	frameIDs := unionSortedStrings(unionSortedStrings(newIDs, customEnableIDs), initialDumpIDs)
+	initialDump := feature.requiresInitialDump() && len(initialDumpIDs) > 0
+	customFeatureEnabled := feature.requiresCustom() && len(frameIDs) > 0
+	if firstSubscribe {
+		operation = ""
+		frameIDs = ids
+		initialDump = feature.requiresInitialDump()
+		customFeatureEnabled = feature.requiresCustom()
+	}
+	if len(frameIDs) > 0 {
+		if err := c.sendMarketSubscription(ctx, frameIDs, operation, initialDump, customFeatureEnabled); err != nil {
+			return err
+		}
+	}
+	for _, id := range ids {
+		c.marketSubs.increment(id, feature)
+	}
+	return nil
+}
+
+func (c *Client) unsubscribeMarketAssets(ctx context.Context, feature marketSubscriptionFeature, assetIDs []string) error {
+	ids := canonicalStrings(assetIDs)
+	if len(ids) == 0 {
+		return nil
+	}
+
+	c.marketMu.Lock()
+	defer c.marketMu.Unlock()
+
+	removedIDs := make([]string, 0, len(ids))
+	decrementIDs := make([]string, 0, len(ids))
+	for _, id := range ids {
+		count := c.marketSubs.featureCount(id, feature)
+		if count == 0 {
+			continue
+		}
+		decrementIDs = append(decrementIDs, id)
+		if count == 1 {
+			if !c.marketSubs.assetActiveExcludingFeature(id, feature) {
+				removedIDs = append(removedIDs, id)
+			}
+		}
+	}
+	if len(decrementIDs) == 0 {
+		return nil
+	}
+
+	if len(removedIDs) > 0 {
+		if err := c.sendMarketSubscription(ctx, removedIDs, "unsubscribe", false, false); err != nil {
+			return err
+		}
+	}
+	for _, id := range decrementIDs {
+		c.marketSubs.decrement(id, feature)
+	}
+	return nil
+}
+
+func (c *Client) replayMarketSubscription(ctx context.Context) error {
+	c.marketMu.Lock()
+	defer c.marketMu.Unlock()
+
+	ids := c.marketSubs.activeAssetIDs()
+	if len(ids) == 0 {
+		return nil
+	}
+	return c.sendMarketSubscription(ctx, ids, "", c.marketSubs.initialDumpActive(), c.marketSubs.customActive())
+}
+
+func (c *Client) sendMarketSubscription(ctx context.Context, assetIDs []string, operation string, initialDump bool, customFeatureEnabled bool) error {
+	conn := c.conn.Load()
+	if conn == nil {
+		return errors.New("polymarket: websocket is not connected")
+	}
+	frame := marketSubscriptionFrame{
+		Operation:            operation,
+		AssetIDs:             assetIDs,
+		InitialDump:          initialDump,
+		CustomFeatureEnabled: customFeatureEnabled,
+	}
+	if operation == "" {
+		frame.Type = ChannelMarket
+	}
+	return wsjson.Write(ctx, conn, frame)
+}
+
+func (c *Client) addUserAndSend(ctx context.Context, sub subscription) error {
+	c.userSubsMu.Lock()
+	c.userSubs = append(c.userSubs, sub)
+	c.userSubsMu.Unlock()
+	if err := c.sendUserSubscription(ctx, sub, ""); err != nil {
+		c.removeMatchingUserSubscription(sub)
 		return err
 	}
 	return nil
 }
 
-func (c *Client) removeAndSend(ctx context.Context, target subscriptionTarget, ids []string) error {
-	sub := subscription{target: target}
-	if target == subscriptionTargetUser {
-		sub.markets = ids
-	} else {
-		sub.assetIDs = ids
-	}
-	c.removeMatchingSubscription(sub)
-	return c.sendSubscription(ctx, sub, "unsubscribe")
+func (c *Client) removeUserAndSend(ctx context.Context, markets []string) error {
+	sub := subscription{markets: markets}
+	c.removeMatchingUserSubscription(sub)
+	return c.sendUserSubscription(ctx, sub, "unsubscribe")
 }
 
-func (c *Client) replaySubscriptions(ctx context.Context) {
-	c.subsMu.RLock()
-	subs := append([]subscription(nil), c.subs...)
-	c.subsMu.RUnlock()
-	for _, sub := range subs {
-		if err := c.sendSubscription(ctx, sub, ""); err != nil {
-			c.sendErr(fmt.Errorf("polymarket: replay websocket subscription: %w", err))
-		}
-	}
-}
-
-func (c *Client) sendSubscription(ctx context.Context, sub subscription, operation string) error {
+func (c *Client) sendUserSubscription(ctx context.Context, sub subscription, operation string) error {
 	conn := c.conn.Load()
 	if conn == nil {
 		return errors.New("polymarket: websocket is not connected")
 	}
-	if sub.target == subscriptionTargetUser {
-		auth, err := c.wsAuth()
-		if err != nil {
-			return err
-		}
-		return wsjson.Write(ctx, conn, UserSubscription{
-			Type:      ChannelUser,
-			Auth:      auth,
-			Markets:   sub.markets,
-			Operation: operation,
-		})
+	auth, err := c.wsAuth()
+	if err != nil {
+		return err
 	}
-	return wsjson.Write(ctx, conn, MarketSubscription{
-		Type:                 ChannelMarket,
-		Operation:            operation,
-		AssetIDs:             sub.assetIDs,
-		InitialDump:          sub.initialDump,
-		CustomFeatureEnabled: sub.customFeatureEnabled,
+	return wsjson.Write(ctx, conn, UserSubscription{
+		Type:      ChannelUser,
+		Auth:      auth,
+		Markets:   sub.markets,
+		Operation: operation,
 	})
 }
 
@@ -536,20 +768,13 @@ func (c *Client) scheduleReconnect(conn *websocket.Conn) {
 	}()
 }
 
-func (c *Client) removeMatchingSubscription(target subscription) {
-	c.subsMu.Lock()
-	defer c.subsMu.Unlock()
-	for idx := len(c.subs) - 1; idx >= 0; idx-- {
-		sub := c.subs[idx]
-		if sub.target != target.target {
-			continue
-		}
-		if target.target == subscriptionTargetUser && sameStrings(sub.markets, target.markets) {
-			c.subs = append(c.subs[:idx], c.subs[idx+1:]...)
-			return
-		}
-		if target.target == subscriptionTargetMarket && sameStrings(sub.assetIDs, target.assetIDs) {
-			c.subs = append(c.subs[:idx], c.subs[idx+1:]...)
+func (c *Client) removeMatchingUserSubscription(target subscription) {
+	c.userSubsMu.Lock()
+	defer c.userSubsMu.Unlock()
+	for idx := len(c.userSubs) - 1; idx >= 0; idx-- {
+		sub := c.userSubs[idx]
+		if sameStrings(sub.markets, target.markets) {
+			c.userSubs = append(c.userSubs[:idx], c.userSubs[idx+1:]...)
 			return
 		}
 	}
@@ -624,4 +849,38 @@ func sameStrings(a, b []string) bool {
 		seen[value]--
 	}
 	return true
+}
+
+func canonicalStrings(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func unionSortedStrings(a, b []string) []string {
+	if len(a) == 0 {
+		return canonicalStrings(b)
+	}
+	if len(b) == 0 {
+		return canonicalStrings(a)
+	}
+	merged := make([]string, 0, len(a)+len(b))
+	merged = append(merged, a...)
+	merged = append(merged, b...)
+	return canonicalStrings(merged)
 }

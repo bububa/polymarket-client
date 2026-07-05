@@ -53,7 +53,7 @@ Polymarket returns prices as decimal strings (`"0.50"`). Use `shared.Float64` or
 
 ### Connection drops and reconnects
 
-`clob/ws` auto-reconnects by default and replays stored subscriptions. Read asynchronous errors from `client.Errors()` so reconnect problems are visible to your application.
+`clob/ws` auto-reconnects by default. Market reconnect replay sends the current canonical asset subscription once; user reconnect replay sends the stored user subscriptions. Read asynchronous errors from `client.Errors()` so reconnect problems are visible to your application.
 
 Disable reconnect only if you want to own the lifecycle yourself:
 
