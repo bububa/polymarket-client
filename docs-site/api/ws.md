@@ -67,6 +67,8 @@ client.ConnectSports(ctx)   // wss://.../ws         – public sports feed
 
 Each subscribe method has a matching `Unsubscribe...` variant.
 
+Market subscriptions share one connection-level canonical asset set. On an open market connection, subscribing new asset IDs sends a Polymarket subscription update instead of opening a new socket. Order book subscriptions request `initial_dump` when order book ownership is first added for an asset. Asset IDs are trimmed, blank entries are ignored, and duplicates are de-duped by the client.
+
 ## User Subscriptions (requires credentials)
 
 | Method | Description |
@@ -108,8 +110,9 @@ client := ws.New(
 
 ## Reconnection
 
-The client auto-reconnects with exponential backoff (1 s → 2 s → 4 s → ... → 60 s cap).  
-Subscriptions are automatically replayed on each successful reconnect.
+The client auto-reconnects with exponential backoff (1 s → 2 s → 4 s → ... → 60 s cap).
+
+Market reconnect replay sends one current canonical asset subscription. User-channel reconnect replay keeps the stored user subscriptions.
 
 ## Stale Connection Detection
 
@@ -122,7 +125,7 @@ client := ws.New(
 )
 ```
 
-Any successfully read non-empty WebSocket message, including heartbeat messages, refreshes the stale timer. If no message is received for the configured timeout, the client closes the current connection, reconnects if auto-reconnect is enabled, and replays subscriptions.
+Any successfully read non-empty WebSocket message, including heartbeat messages, refreshes the stale timer. If no message is received for the configured timeout, the client closes the current connection, reconnects if auto-reconnect is enabled, and replays the current subscriptions.
 
 ## Closing
 

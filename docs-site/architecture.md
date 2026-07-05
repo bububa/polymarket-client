@@ -240,7 +240,7 @@ stateDiagram-v2
     Disconnected --> [*]
 ```
 
-The WebSocket client (`clob/ws`) uses `github.com/coder/websocket`, maintains a read loop in a goroutine, and sends decoded updates through `client.Events()`. Reconnection is automatic by default with exponential backoff, and stored subscriptions are replayed after each successful reconnect. Optional stale detection can force reconnect when the socket stays open but no messages arrive before the configured timeout.
+The WebSocket client (`clob/ws`) uses `github.com/coder/websocket`, maintains a read loop in a goroutine, and sends decoded updates through `client.Events()`. Reconnection is automatic by default with exponential backoff. Market subscriptions are maintained as a connection-level canonical asset set and replayed once after reconnect; user subscriptions retain their stored subscription replay behavior. Optional stale detection can force reconnect when the socket stays open but no messages arrive before the configured timeout.
 
 ## CLOB–Relayer Integration
 

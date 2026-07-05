@@ -11,7 +11,7 @@
 ## Features
 
 - **Complete CLOB v2 coverage** — market data, order management, positions, RFQ (request-for-quote), rewards, builder APIs
-- **WebSocket support** — live order book, price streams, and user order/trade events with auto-reconnect, subscription replay, heartbeat handling, and optional stale-connection detection
+- **WebSocket support** — live order book, price streams, and user order/trade events with auto-reconnect, market subscription updates/replay, heartbeat handling, and optional stale-connection detection
 - **Three-tier auth** — public (no auth), L1 (EIP-712 signatures), L2 (API key + passphrase + wallet signature)
 - **All Polymarket APIs** — CLOB, Relayer, Data, Gamma, Bridge
 - **Deposit wallet support** — `POLY_1271` CLOB order signing, balance/allowance updates, `WALLET-CREATE`, `WALLET` batch requests, and CTF helpers
@@ -743,9 +743,9 @@ for err := range wsClient.Errors() {
 
 **User subscriptions** (auth required, via `ConnectUser`): `SubscribeUserEvents`, `SubscribeOrders`, `SubscribeTrades`.
 
-Each subscribe method accepts `ctx context.Context` and a slice of asset IDs (market) or market condition IDs (user).
+Each subscribe method accepts `ctx context.Context` and a slice of asset IDs (market) or market condition IDs (user). Market asset IDs are trimmed, blank entries are ignored, and duplicate entries are de-duped by the client.
 
-The client automatically reconnects on read failures with exponential backoff and replays stored subscriptions after each successful reconnect. Stale detection is disabled by default; enable `WithStaleTimeout` when you want the client to force reconnect a socket that stays open but stops receiving messages. Heartbeat messages count as received messages for stale detection.
+On an open market connection, adding new market asset IDs sends a Polymarket subscription update instead of opening a new socket. Order book subscriptions request `initial_dump` when order book ownership is first added for an asset. The client automatically reconnects on read failures with exponential backoff; market reconnect replay sends one current canonical asset subscription, while user-channel reconnect replay keeps the stored user subscriptions. Stale detection is disabled by default; enable `WithStaleTimeout` when you want the client to force reconnect a socket that stays open but stops receiving messages. Heartbeat messages count as received messages for stale detection.
 
 ### WebSocket Real-Time Data (`clob/ws/rtds`)
 

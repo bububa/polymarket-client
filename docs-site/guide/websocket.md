@@ -33,6 +33,8 @@ for event := range client.Events() {
 Market-channel subscriptions (order book, prices, etc.) require no auth.  
 User-channel subscriptions (order fills, trade events) require L2 credentials:
 
+Market subscriptions share one connection-level asset set. Calling another market subscribe method with new asset IDs on an open market connection sends a subscription update on the existing socket; it does not open a new connection. Order book subscriptions request `initial_dump` when order book ownership is first added for an asset. Asset IDs are trimmed, blank entries are ignored, and duplicates are de-duped by the client.
+
 ```go
 client := ws.New(
     ws.WithCredentials(&clob.Credentials{
@@ -81,7 +83,7 @@ By default the client reconnects with exponential backoff:
 | 4 | 8 s |
 | n | min(2ⁿ⁻¹ s, 60 s) |
 
-After each reconnect, all subscriptions are replayed automatically.
+After each reconnect, market subscriptions replay as one current canonical asset subscription. User-channel subscriptions replay from the stored user subscription list.
 
 Disable auto-reconnect:
 
