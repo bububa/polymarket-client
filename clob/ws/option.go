@@ -48,6 +48,14 @@ func WithHeartbeatInterval(interval time.Duration) Option {
 	}
 }
 
+// WithOrderBookInitialDump controls the initial_dump flag on order book
+// subscriptions. It defaults to true.
+func WithOrderBookInitialDump(initialDump bool) Option {
+	return func(clt *Client) {
+		clt.orderBookInitialDump = initialDump
+	}
+}
+
 // WithStaleTimeout enables stale stream detection.
 // When enabled, the client forces a reconnect if no message is received for the
 // given duration. Set timeout <= 0 to disable it.

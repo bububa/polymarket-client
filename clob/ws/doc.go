@@ -23,6 +23,10 @@
 //	err = wsClient.SubscribeOrderBook(ctx, []string{"token-id"})
 //	err = wsClient.SubscribeOrders(ctx, []string{"condition-id"})
 //
+// Disable the order book initial snapshot if you only want live deltas:
+//
+//	wsClient := ws.New(ws.WithOrderBookInitialDump(false))
+//
 // Market subscriptions share one connection-level asset set. New market assets
 // are sent with subscription update frames, and reconnect replay sends the
 // current canonical asset set once.

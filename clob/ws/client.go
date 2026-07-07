@@ -37,19 +37,20 @@ type Client struct {
 	dialOpts *websocket.DialOptions
 	creds    *clob.Credentials
 
-	conn               *atomic.Pointer[websocket.Conn]
-	closed             *atomic.Bool
-	connected          *atomic.Bool
-	ctx                context.Context
-	cancel             context.CancelFunc
-	events             chan Event
-	errs               chan error
-	autoReconnect      bool
-	heartbeatInterval  time.Duration
-	staleTimeout       time.Duration
-	staleCheckInterval time.Duration
-	lastDataAt         *atomic.Int64
-	reconnecting       *atomic.Bool
+	conn                 *atomic.Pointer[websocket.Conn]
+	closed               *atomic.Bool
+	connected            *atomic.Bool
+	ctx                  context.Context
+	cancel               context.CancelFunc
+	events               chan Event
+	errs                 chan error
+	autoReconnect        bool
+	heartbeatInterval    time.Duration
+	staleTimeout         time.Duration
+	staleCheckInterval   time.Duration
+	orderBookInitialDump bool
+	lastDataAt           *atomic.Int64
+	reconnecting         *atomic.Bool
 
 	onConnected    Callback
 	onReconnected  Callback
@@ -87,7 +88,7 @@ type marketSubscriptionFrame struct {
 	Type                 Channel  `json:"type,omitempty"`
 	Operation            string   `json:"operation,omitempty"`
 	AssetIDs             []string `json:"assets_ids,omitempty"`
-	InitialDump          bool     `json:"initial_dump,omitempty"`
+	InitialDump          *bool    `json:"initial_dump,omitempty"`
 	CustomFeatureEnabled bool     `json:"custom_feature_enabled,omitempty"`
 }
 
@@ -97,7 +98,7 @@ func newMarketSubscriptionState() marketSubscriptionState {
 	}
 }
 
-func (f marketSubscriptionFeature) requiresInitialDump() bool {
+func (f marketSubscriptionFeature) supportsInitialDump() bool {
 	return f == marketFeatureOrderBook
 }
 
@@ -203,14 +204,15 @@ func (s *marketSubscriptionState) customActive() bool {
 func New(opts ...Option) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 	clt := &Client{
-		host:              DefaultHost,
-		sportsHost:        DefaultSportsHost,
-		ctx:               ctx,
-		cancel:            cancel,
-		events:            make(chan Event, 256),
-		errs:              make(chan error, 16),
-		autoReconnect:     true,
-		heartbeatInterval: DefaultHeartbeatInterval,
+		host:                 DefaultHost,
+		sportsHost:           DefaultSportsHost,
+		ctx:                  ctx,
+		cancel:               cancel,
+		events:               make(chan Event, 256),
+		errs:                 make(chan error, 16),
+		autoReconnect:        true,
+		heartbeatInterval:    DefaultHeartbeatInterval,
+		orderBookInitialDump: true,
 
 		url:          atomic.NewString(""),
 		conn:         atomic.NewPointer[websocket.Conn](nil),
@@ -461,7 +463,7 @@ func (c *Client) subscribeMarketAssets(ctx context.Context, feature marketSubscr
 		if !assetActive {
 			newIDs = append(newIDs, id)
 		}
-		if feature.requiresInitialDump() && c.marketSubs.featureCount(id, feature) == 0 {
+		if feature.supportsInitialDump() && c.marketSubs.featureCount(id, feature) == 0 {
 			initialDumpIDs = append(initialDumpIDs, id)
 		}
 		if feature.requiresCustom() && !c.marketSubs.assetCustomActive(id) {
@@ -471,12 +473,12 @@ func (c *Client) subscribeMarketAssets(ctx context.Context, feature marketSubscr
 
 	operation := "subscribe"
 	frameIDs := unionSortedStrings(unionSortedStrings(newIDs, customEnableIDs), initialDumpIDs)
-	initialDump := feature.requiresInitialDump() && len(initialDumpIDs) > 0
+	initialDump := c.marketInitialDump(feature, len(initialDumpIDs) > 0)
 	customFeatureEnabled := feature.requiresCustom() && len(frameIDs) > 0
 	if firstSubscribe {
 		operation = ""
 		frameIDs = ids
-		initialDump = feature.requiresInitialDump()
+		initialDump = c.marketInitialDump(feature, true)
 		customFeatureEnabled = feature.requiresCustom()
 	}
 	if len(frameIDs) > 0 {
@@ -518,7 +520,7 @@ func (c *Client) unsubscribeMarketAssets(ctx context.Context, feature marketSubs
 	}
 
 	if len(removedIDs) > 0 {
-		if err := c.sendMarketSubscription(ctx, removedIDs, "unsubscribe", false, false); err != nil {
+		if err := c.sendMarketSubscription(ctx, removedIDs, "unsubscribe", nil, false); err != nil {
 			return err
 		}
 	}
@@ -536,10 +538,26 @@ func (c *Client) replayMarketSubscription(ctx context.Context) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	return c.sendMarketSubscription(ctx, ids, "", c.marketSubs.initialDumpActive(), c.marketSubs.customActive())
+	return c.sendMarketSubscription(ctx, ids, "", c.replayInitialDump(), c.marketSubs.customActive())
 }
 
-func (c *Client) sendMarketSubscription(ctx context.Context, assetIDs []string, operation string, initialDump bool, customFeatureEnabled bool) error {
+func (c *Client) marketInitialDump(feature marketSubscriptionFeature, include bool) *bool {
+	if !include || !feature.supportsInitialDump() {
+		return nil
+	}
+	initialDump := c.orderBookInitialDump
+	return &initialDump
+}
+
+func (c *Client) replayInitialDump() *bool {
+	if !c.marketSubs.initialDumpActive() {
+		return nil
+	}
+	initialDump := c.orderBookInitialDump
+	return &initialDump
+}
+
+func (c *Client) sendMarketSubscription(ctx context.Context, assetIDs []string, operation string, initialDump *bool, customFeatureEnabled bool) error {
 	conn := c.conn.Load()
 	if conn == nil {
 		return errors.New("polymarket: websocket is not connected")

@@ -152,6 +152,44 @@ func TestSubscribeOrderBookSendsDynamicSubscribeUpdate(t *testing.T) {
 	assertFrameAssets(t, update, []string{"asset-b"})
 }
 
+func TestSubscribeOrderBookCanDisableInitialDump(t *testing.T) {
+	gotFrame := make(chan map[string]any, 2)
+	server := newMarketFrameServer(t, gotFrame)
+	defer server.Close()
+
+	url := "ws" + strings.TrimPrefix(server.URL, "http")
+	client := New(
+		WithHost(url),
+		WithAutoReconnect(false),
+		WithOrderBookInitialDump(false),
+	)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := client.ConnectMarket(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	if err := client.SubscribeOrderBook(ctx, []string{"asset-a"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.SubscribeOrderBook(ctx, []string{"asset-b"}); err != nil {
+		t.Fatal(err)
+	}
+
+	initial := receiveMarketFrame(t, ctx, gotFrame)
+	if got, ok := initial["initial_dump"]; !ok || got != false {
+		t.Fatalf("initial_dump = %v, present = %v, want explicit false", got, ok)
+	}
+	assertFrameAssets(t, initial, []string{"asset-a"})
+
+	update := receiveMarketFrame(t, ctx, gotFrame)
+	if got, ok := update["initial_dump"]; !ok || got != false {
+		t.Fatalf("dynamic initial_dump = %v, present = %v, want explicit false", got, ok)
+	}
+	assertFrameAssets(t, update, []string{"asset-b"})
+}
+
 func TestUnsubscribeOrderBookSendsUnsubscribeUpdate(t *testing.T) {
 	gotFrame := make(chan map[string]any, 2)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -372,6 +410,70 @@ func TestOrderBookDynamicSubscribeUpdatesReplayState(t *testing.T) {
 		t.Fatalf("replay should be an initial subscription, got: %#v", replay)
 	}
 	assertFrameAssets(t, replay, []string{"asset-b"})
+}
+
+func TestOrderBookInitialDumpDisabledReplaysFalse(t *testing.T) {
+	gotInitial := make(chan map[string]any, 1)
+	gotReplay := make(chan map[string]any, 1)
+	var connCount atomic.Int64
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{})
+		if err != nil {
+			t.Errorf("accept: %v", err)
+			return
+		}
+
+		ctx := context.Background()
+		if connCount.Add(1) == 1 {
+			initial, err := readMarketFrame(ctx, conn)
+			if err != nil {
+				t.Errorf("read initial subscription: %v", err)
+				_ = conn.CloseNow()
+				return
+			}
+			gotInitial <- initial
+			_ = conn.CloseNow()
+			return
+		}
+
+		replay, err := readMarketFrame(ctx, conn)
+		if err != nil {
+			t.Errorf("read replay subscription: %v", err)
+			_ = conn.CloseNow()
+			return
+		}
+		gotReplay <- replay
+		<-ctx.Done()
+	}))
+	defer server.Close()
+
+	url := "ws" + strings.TrimPrefix(server.URL, "http")
+	client := New(
+		WithHost(url),
+		WithHeartbeatInterval(0),
+		WithOrderBookInitialDump(false),
+	)
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	if err := client.ConnectMarket(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	if err := client.SubscribeOrderBook(ctx, []string{"asset-a"}); err != nil {
+		t.Fatal(err)
+	}
+	initial := receiveMarketFrame(t, ctx, gotInitial)
+	if got, ok := initial["initial_dump"]; !ok || got != false {
+		t.Fatalf("initial_dump = %v, present = %v, want explicit false", got, ok)
+	}
+
+	replay := receiveMarketFrame(t, ctx, gotReplay)
+	if got, ok := replay["initial_dump"]; !ok || got != false {
+		t.Fatalf("replay initial_dump = %v, present = %v, want explicit false", got, ok)
+	}
+	assertFrameAssets(t, replay, []string{"asset-a"})
 }
 
 func TestDuplicateOrderBookSubscribeReplaysOnce(t *testing.T) {
