@@ -91,6 +91,23 @@
 //	client.CreateRFQQuote(ctx, clob.CreateRFQQuoteRequest{...})
 //	client.AcceptRFQRequest(ctx, "request-id")
 //
+// # Combo Position Operations
+//
+// Combo inventory uses protocol-v2 position IDs and contracts. Amounts are pUSD
+// or share base units (1_000_000 = 1 unit):
+//
+//	err := client.ComboSplitPositionWithDepositWallet(ctx,
+//	    &clob.ComboSplitPositionRequest{
+//	        LegPositionIDs: []string{"<leg-position-id-1>", "<leg-position-id-2>"},
+//	        Amount: big.NewInt(10_000_000),
+//	    },
+//	    &clob.DepositWalletCTFArgs{DepositWallet: wallet, Deadline: deadline},
+//	    &out,
+//	)
+//
+// Set Amount to nil on high-level merge and redeem methods to resolve the
+// maximum complementary balance or full position balance through Polygon RPC.
+//
 // # Rewards & Builder APIs
 //
 //	client.GetEarningsForUserForDay(ctx, date, sigType, "")

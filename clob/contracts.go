@@ -23,6 +23,19 @@ const (
 	// Combo RFQ orders. Combo orders use EIP-712 protocol version 3.
 	ContractAddressComboExchange = "0xe3333700cA9d93003F00f0F71f8515005F6c00Aa"
 
+	// ContractAddressComboPositionManager is the ERC-1155 position manager for
+	// protocol-v2 Combo positions.
+	ContractAddressComboPositionManager = "0x006F54F7f9A22e0000CC2AB60031000000ae9fEF"
+
+	// ContractAddressCombinatorialModule prepares protocol-v2 Combo conditions.
+	ContractAddressCombinatorialModule = "0x30000034706C7d8e12009DAB006Be20000c031A8"
+
+	// ContractAddressComboRouter splits, merges, and redeems Combo positions.
+	ContractAddressComboRouter = "0x12121212006e4CD160D18e3f00711DA5c3372600"
+
+	// ContractAddressComboAutoRedeemer is the protocol-v2 automatic redeemer.
+	ContractAddressComboAutoRedeemer = "0xa1200000d0002264C9a1698e001292D00E1b00af"
+
 	// ContractAddressNegRiskAdapter is the legacy negative-risk adapter contract.
 	//
 	// The V2 NegRiskCTFCollateralAdapter delegates legacy neg-risk token
@@ -139,6 +152,18 @@ type ContractConfig struct {
 	// ComboExchange is the CTF Exchange V2 contract used by Combo RFQ orders.
 	ComboExchange common.Address
 
+	// ComboPositionManager is the ERC-1155 contract holding Combo positions.
+	ComboPositionManager common.Address
+
+	// CombinatorialModule derives and prepares Combo conditions from their legs.
+	CombinatorialModule common.Address
+
+	// ComboRouter executes Combo split, merge, and redeem operations.
+	ComboRouter common.Address
+
+	// ComboAutoRedeemer is the protocol-v2 automatic redemption contract.
+	ComboAutoRedeemer common.Address
+
 	// NegRiskAdapter is the legacy adapter used internally by the V2 negative-risk
 	// collateral adapter.
 	NegRiskAdapter common.Address
@@ -199,6 +224,10 @@ var contractConfigs = map[int64]ContractConfig{
 		Exchange:                    common.HexToAddress(ContractAddressCTFExchange),
 		NegRiskExchange:             common.HexToAddress(ContractAddressNegRiskCTFExchange),
 		ComboExchange:               common.HexToAddress(ContractAddressComboExchange),
+		ComboPositionManager:        common.HexToAddress(ContractAddressComboPositionManager),
+		CombinatorialModule:         common.HexToAddress(ContractAddressCombinatorialModule),
+		ComboRouter:                 common.HexToAddress(ContractAddressComboRouter),
+		ComboAutoRedeemer:           common.HexToAddress(ContractAddressComboAutoRedeemer),
 		NegRiskAdapter:              common.HexToAddress(ContractAddressNegRiskAdapter),
 		ConditionalTokens:           common.HexToAddress(ContractAddressConditionalTokens),
 		Collateral:                  common.HexToAddress(ContractAddressPUSD),
