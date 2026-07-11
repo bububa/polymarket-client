@@ -82,6 +82,24 @@ const ctfABIJSON = `[
 const negRiskAdapterABIJSON = `[
   {
     "inputs": [
+      {"name":"marketId","type":"bytes32"}
+    ],
+    "name":"getFeeBips",
+    "outputs":[{"name":"","type":"uint256"}],
+    "stateMutability":"view",
+    "type":"function"
+  },
+  {
+    "inputs": [
+      {"name":"marketId","type":"bytes32"}
+    ],
+    "name":"getQuestionCount",
+    "outputs":[{"name":"","type":"uint256"}],
+    "stateMutability":"view",
+    "type":"function"
+  },
+  {
+    "inputs": [
       {"name":"marketId","type":"bytes32"},
       {"name":"indexSet","type":"uint256"},
       {"name":"amount","type":"uint256"}

@@ -19,6 +19,10 @@
 //	// Open interest
 //	oi, _ := client.GetOpenInterest(ctx, []string{"market1", "market2"})
 //
+//	// Combo positions and lifecycle activity
+//	comboPositions, _ := client.GetComboPositions(ctx, data.ComboPositionParams{User: "0x..."})
+//	comboActivity, _ := client.GetComboActivity(ctx, data.ComboActivityParams{User: "0x..."})
+//
 //	// Download accounting snapshot (ZIP)
 //	zipData, _ := client.DownloadAccountingSnapshot(ctx, "0x...")
 //

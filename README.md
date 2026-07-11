@@ -230,6 +230,8 @@ Use `DepositWalletBatch` / `DepositWalletBatchRelayerRequest` only when you need
 | [`clob`](#clob-package)               | CLOB v2 — orders, markets, positions, RFQ                | `https://clob.polymarket.com`                | Depends on endpoint |
 | [`clob/ws`](#clobws-package)          | WebSocket live order book, prices & user events          | `wss://ws-subscriptions-clob.polymarket.com` | L2 (user only)      |
 | [`clob/ws/rtds`](#clobwsrtds-package) | WebSocket real-time data subscriptions                   | _(see rtds package)_                         | None                |
+| [`combo`](#combo-package)             | Combo market discovery and maker RFQ REST                | `https://combos-rfq-api.polymarket.com`      | Maker writes only   |
+| [`combo/ws`](#combo-package)          | Authenticated Combo RFQ quoter session                   | `wss://combos-rfq-gateway-quoter.polymarket.com/ws/rfq` | CLOB credentials |
 | [`relayer`](#relayer-package)         | Submit signed on-chain transactions                      | `https://relayer-v2.polymarket.com`          | API key             |
 | [`data`](#data-package)               | Positions, trades, activity, leaderboard                 | `https://data-api.polymarket.com`            | None                |
 | [`gamma`](#gamma-package)             | Market search, events, tags, profiles                    | `https://gamma-api.polymarket.com`           | None                |
@@ -575,6 +577,9 @@ resp, err := b.CreateAndPostMarketOrder(ctx, mktArgs, opts, clob.FOK, nil)
 
 ### RFQ (Request for Quote) (AuthL2)
 
+These methods implement the legacy CLOB RFQ API. New multi-leg Combo RFQs use
+the separate `combo` and `combo/ws` packages below.
+
 | Method                  | Endpoint                     | Description                  |
 | ----------------------- | ---------------------------- | ---------------------------- |
 | `CreateRFQRequest`      | `/rfq/request`               | Create RFQ                   |
@@ -588,6 +593,57 @@ resp, err := b.CreateAndPostMarketOrder(ctx, mktArgs, opts, clob.FOK, nil)
 | `AcceptRFQRequest`      | `/rfq/request/accept`        | Accept RFQ                   |
 | `ApproveRFQQuote`       | `/rfq/quote/approve`         | Approve quote                |
 | `GetRFQConfig`          | `/rfq/config`                | RFQ configuration            |
+
+### Combo package
+
+```go
+identity := combo.Identity{
+    SignerAddress: signerAddress,
+    MakerAddress: makerAddress,
+    SignatureType: clob.SignatureTypeEOA,
+}
+
+rest := combo.NewClient("",
+    combo.WithCredentials(credentials),
+    combo.WithSigner(signer),
+    combo.WithIdentity(identity),
+)
+
+var markets combo.MarketPage
+err := rest.GetMarkets(ctx, combo.MarketParams{Limit: 50}, &markets)
+
+rfq := combows.New(
+    combows.WithCredentials(credentials),
+    combows.WithSigner(signer),
+    combows.WithIdentity(identity),
+)
+session, err := rfq.Open(ctx)
+if err != nil { /* handle */ }
+defer session.Close()
+
+for event := range session.Events() {
+    request, ok := event.(combows.QuoteRequestEvent)
+    if !ok { continue }
+    _, err = session.Quote(ctx, request, combo.QuoteOptions{Price: "0.45"})
+}
+```
+
+For a POLY_1271 deposit wallet, the API credentials still belong to the owner
+EOA while the order identity belongs to the wallet:
+
+```go
+identity := combo.Identity{
+    SignerAddress: depositWalletAddress,
+    MakerAddress: depositWalletAddress,
+    SignatureType: clob.SignatureTypePoly1271,
+}
+rest := combo.NewClient("",
+    combo.WithCredentials(credentials),
+    combo.WithSigner(ownerSigner),
+    combo.WithAuthAddress(ownerSigner.Address().Hex()),
+    combo.WithIdentity(identity),
+)
+```
 
 ### Rewards (AuthL2 + Public)
 

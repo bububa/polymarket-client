@@ -24,6 +24,22 @@ func TestFlexibleNumericTypes(t *testing.T) {
 	}
 }
 
+func TestStringPreservesComboBigIntegersAndDecimals(t *testing.T) {
+	var got struct {
+		PositionID String `json:"position_id"`
+		Amount     String `json:"amount"`
+	}
+	if err := json.Unmarshal([]byte(`{"position_id":1234567890123456789012345678901234567890,"amount":0.450000}`), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.PositionID != "1234567890123456789012345678901234567890" {
+		t.Fatalf("position id = %s", got.PositionID)
+	}
+	if got.Amount != "0.450000" {
+		t.Fatalf("amount = %s", got.Amount)
+	}
+}
+
 func TestFlexibleSliceTypes(t *testing.T) {
 	var got struct {
 		Outcomes []string     `json:"outcomes"`

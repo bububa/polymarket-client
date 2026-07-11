@@ -19,6 +19,10 @@ const (
 	// markets.
 	ContractAddressNegRiskCTFExchange = "0xe2222d279d744050d28e00520010520000310F59"
 
+	// ContractAddressComboExchange is the CTF Exchange V2 contract used by
+	// Combo RFQ orders. Combo orders use EIP-712 protocol version 3.
+	ContractAddressComboExchange = "0xe3333700cA9d93003F00f0F71f8515005F6c00Aa"
+
 	// ContractAddressNegRiskAdapter is the legacy negative-risk adapter contract.
 	//
 	// The V2 NegRiskCTFCollateralAdapter delegates legacy neg-risk token
@@ -132,6 +136,9 @@ type ContractConfig struct {
 	// market order signing and settlement.
 	NegRiskExchange common.Address
 
+	// ComboExchange is the CTF Exchange V2 contract used by Combo RFQ orders.
+	ComboExchange common.Address
+
 	// NegRiskAdapter is the legacy adapter used internally by the V2 negative-risk
 	// collateral adapter.
 	NegRiskAdapter common.Address
@@ -191,6 +198,7 @@ var contractConfigs = map[int64]ContractConfig{
 	PolygonChainID: {
 		Exchange:                    common.HexToAddress(ContractAddressCTFExchange),
 		NegRiskExchange:             common.HexToAddress(ContractAddressNegRiskCTFExchange),
+		ComboExchange:               common.HexToAddress(ContractAddressComboExchange),
 		NegRiskAdapter:              common.HexToAddress(ContractAddressNegRiskAdapter),
 		ConditionalTokens:           common.HexToAddress(ContractAddressConditionalTokens),
 		Collateral:                  common.HexToAddress(ContractAddressPUSD),
