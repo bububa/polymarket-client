@@ -35,6 +35,10 @@ func TestNegRiskAdapterGetters(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				fail := func(format string, args ...any) {
+					t.Errorf(format, args...)
+					http.Error(w, "invalid JSON-RPC request", http.StatusInternalServerError)
+				}
 				var request struct {
 					JSONRPC string            `json:"jsonrpc"`
 					ID      json.RawMessage   `json:"id"`
@@ -42,32 +46,39 @@ func TestNegRiskAdapterGetters(t *testing.T) {
 					Params  []json.RawMessage `json:"params"`
 				}
 				if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-					t.Fatal(err)
+					fail("decode rpc request: %v", err)
+					return
 				}
 				if request.Method != "eth_call" || len(request.Params) == 0 {
-					t.Fatalf("rpc request = %+v", request)
+					fail("rpc request = %+v", request)
+					return
 				}
 				var call struct {
 					To    string `json:"to"`
 					Input string `json:"input"`
 				}
 				if err := json.Unmarshal(request.Params[0], &call); err != nil {
-					t.Fatal(err)
+					fail("decode eth_call: %v", err)
+					return
 				}
 				if !strings.EqualFold(call.To, contracts.NegRiskAdapter.Hex()) {
-					t.Fatalf("to = %q", call.To)
+					fail("to = %q", call.To)
+					return
 				}
 				input, err := hexutil.Decode(call.Input)
 				if err != nil {
-					t.Fatal(err)
+					fail("decode call input: %v", err)
+					return
 				}
 				method := negRiskABI.Methods[tt.method]
 				if len(input) != 4+32 || string(input[:4]) != string(method.ID) || common.BytesToHash(input[4:]) != marketID {
-					t.Fatalf("input = %s", call.Input)
+					fail("input = %s", call.Input)
+					return
 				}
 				encoded, err := method.Outputs.Pack(tt.value)
 				if err != nil {
-					t.Fatal(err)
+					fail("encode rpc result: %v", err)
+					return
 				}
 				w.Header().Set("Content-Type", "application/json")
 				_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":` + string(request.ID) + `,"result":"` + hexutil.Encode(encoded) + `"}`))
