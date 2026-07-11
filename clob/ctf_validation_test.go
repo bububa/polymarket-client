@@ -360,6 +360,98 @@ func TestBuildRedeemNegRiskTxUsesNegRiskCTFCollateralAdapter(t *testing.T) {
 	assertBigIntSliceEqualCTF(t, "index sets placeholder", BinaryPartition(), values[3].([]*big.Int))
 }
 
+func TestBuildConvertPositionsTxRejectsInvalidInputs(t *testing.T) {
+	client := NewClient("", WithChainID(PolygonChainID))
+
+	tests := []struct {
+		name string
+		req  *ConvertPositionsRequest
+		out  *CTFTransaction
+		want string
+	}{
+		{
+			name: "nil request",
+			out:  &CTFTransaction{},
+			want: "nil convert positions request",
+		},
+		{
+			name: "nil output",
+			req:  validConvertPositionsRequest(),
+			want: "nil CTF transaction output",
+		},
+		{
+			name: "missing market id",
+			req: &ConvertPositionsRequest{
+				IndexSet: big.NewInt(1),
+				Amount:   big.NewInt(1),
+			},
+			out:  &CTFTransaction{},
+			want: "market id is required",
+		},
+		{
+			name: "missing index set",
+			req: &ConvertPositionsRequest{
+				MarketID: ctfSafetyMarketID,
+				Amount:   big.NewInt(1),
+			},
+			out:  &CTFTransaction{},
+			want: "index set is required",
+		},
+		{
+			name: "zero index set",
+			req: &ConvertPositionsRequest{
+				MarketID: ctfSafetyMarketID,
+				IndexSet: new(big.Int),
+				Amount:   big.NewInt(1),
+			},
+			out:  &CTFTransaction{},
+			want: "index set must be positive",
+		},
+		{
+			name: "missing amount",
+			req: &ConvertPositionsRequest{
+				MarketID: ctfSafetyMarketID,
+				IndexSet: big.NewInt(1),
+			},
+			out:  &CTFTransaction{},
+			want: "amount is required",
+		},
+		{
+			name: "zero amount",
+			req: &ConvertPositionsRequest{
+				MarketID: ctfSafetyMarketID,
+				IndexSet: big.NewInt(1),
+				Amount:   new(big.Int),
+			},
+			out:  &CTFTransaction{},
+			want: "amount must be positive",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := client.BuildConvertPositionsTx(tt.req, tt.out)
+			assertErrorContains(t, err, tt.want)
+		})
+	}
+}
+
+func TestBuildConvertPositionsTxUsesNegRiskCTFCollateralAdapter(t *testing.T) {
+	client := NewClient("", WithChainID(PolygonChainID))
+	contracts, err := Contracts(PolygonChainID)
+	if err != nil {
+		t.Fatalf("Contracts: %v", err)
+	}
+
+	var tx CTFTransaction
+	if err := client.BuildConvertPositionsTx(validConvertPositionsRequest(), &tx); err != nil {
+		t.Fatalf("BuildConvertPositionsTx: %v", err)
+	}
+
+	assertAddressEqualCTF(t, "to", contracts.NegRiskCTFCollateralAdapter, tx.To)
+	assertMethodSelectorCTF(t, "convertPositions", negRiskABI.Methods["convertPositions"].ID, tx.Data)
+}
+
 func validSplitPositionRequest() *SplitPositionRequest {
 	return &SplitPositionRequest{
 		CollateralToken:    ctfSafetyCollateral,
@@ -367,6 +459,14 @@ func validSplitPositionRequest() *SplitPositionRequest {
 		ConditionID:        ctfSafetyConditionID,
 		Partition:          BinaryPartition(),
 		Amount:             big.NewInt(1_000_000),
+	}
+}
+
+func validConvertPositionsRequest() *ConvertPositionsRequest {
+	return &ConvertPositionsRequest{
+		MarketID: ctfSafetyMarketID,
+		IndexSet: big.NewInt(1),
+		Amount:   big.NewInt(1_000_000),
 	}
 }
 

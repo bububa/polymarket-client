@@ -93,6 +93,18 @@ type RedeemNegRiskRequest struct {
 	ConditionID common.Hash
 }
 
+// ConvertPositionsRequest describes a V2 neg-risk collateral adapter
+// convertPositions call.
+type ConvertPositionsRequest struct {
+	// MarketID identifies the multi-outcome neg-risk market.
+	MarketID common.Hash
+	// IndexSet selects the NO positions to convert. Bit zero represents the
+	// market's first question, bit one the second question, and so on.
+	IndexSet *big.Int
+	// Amount is the number of selected NO positions to convert, in base units.
+	Amount *big.Int
+}
+
 // TxReceipt is the minimal transaction receipt returned by CTF helpers.
 type TxReceipt struct {
 	// Hash is the transaction hash.

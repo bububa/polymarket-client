@@ -17,6 +17,7 @@ const ctfSafetyTestPrivateKey = "0x59c6995e998f97a5a0044966f094538092e1db9e7b9c0
 
 var (
 	ctfSafetyConditionID                 = common.HexToHash("0x0102030405060708091011121314151617181920212223242526272829303132")
+	ctfSafetyMarketID                    = common.HexToHash("0x1112131415161718192021222324252627282930313233343536373839404142")
 	ctfSafetyParentCollection            = common.HexToHash("0x0000000000000000000000000000000000000000000000000000000000000000")
 	ctfSafetyCollateral                  = mustContractConfigForTest(PolygonChainID).Collateral
 	ctfSafetyCTFCollateralAdapter        = mustContractConfigForTest(PolygonChainID).CTFCollateralAdapter
@@ -133,6 +134,31 @@ func TestBuildCTFTransactions_ABIRoundTrip(t *testing.T) {
 		assertHashEqualCTF(t, "parentCollectionID placeholder", common.Hash{}, values[1].([32]byte))
 		assertHashEqualCTF(t, "conditionID", req.ConditionID, values[2].([32]byte))
 		assertBigIntSliceEqualCTF(t, "indexSets placeholder", BinaryPartition(), values[3].([]*big.Int))
+	})
+
+	t.Run("convertPositions", func(t *testing.T) {
+		req := &ConvertPositionsRequest{
+			MarketID: ctfSafetyMarketID,
+			IndexSet: big.NewInt(5),
+			Amount:   big.NewInt(3_000_000),
+		}
+
+		var tx CTFTransaction
+		if err := client.BuildConvertPositionsTx(req, &tx); err != nil {
+			t.Fatalf("BuildConvertPositionsTx: %v", err)
+		}
+
+		assertAddressEqualCTF(t, "to", ctfSafetyNegRiskCTFCollateralAdapter, tx.To)
+		assertMethodSelectorCTF(t, "convertPositions", negRiskABI.Methods["convertPositions"].ID, tx.Data)
+
+		values, err := negRiskABI.Methods["convertPositions"].Inputs.Unpack(tx.Data[4:])
+		if err != nil {
+			t.Fatalf("unpack convertPositions calldata: %v", err)
+		}
+
+		assertHashEqualCTF(t, "marketID", req.MarketID, values[0].([32]byte))
+		assertBigIntEqualCTF(t, "indexSet", req.IndexSet, values[1].(*big.Int))
+		assertBigIntEqualCTF(t, "amount", req.Amount, values[2].(*big.Int))
 	})
 }
 

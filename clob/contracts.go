@@ -19,10 +19,11 @@ const (
 	// markets.
 	ContractAddressNegRiskCTFExchange = "0xe2222d279d744050d28e00520010520000310F59"
 
-	// ContractAddressNegRiskAdapter is the negative-risk adapter contract.
+	// ContractAddressNegRiskAdapter is the legacy negative-risk adapter contract.
 	//
-	// Used by neg-risk conversion/redemption helpers, especially
-	// BuildRedeemNegRiskTx and RedeemNegRiskWithDepositWallet.
+	// The V2 NegRiskCTFCollateralAdapter delegates legacy neg-risk token
+	// operations to this contract. SDK callers should normally target the V2
+	// collateral adapter so collateral output is returned as pUSD.
 	ContractAddressNegRiskAdapter = "0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35296"
 
 	// ContractAddressConditionalTokens is the Gnosis Conditional Tokens Framework
@@ -68,16 +69,15 @@ const (
 	// ContractAddressCTFCollateralAdapter is the collateral adapter for standard
 	// CTF flows.
 	//
-	// Included for integrations that need to inspect or interact with collateral
-	// adapter flows directly. Normal CTF split/merge/redeem helpers use
-	// ConditionalTokens and pUSD instead.
+	// Standard split, merge, and redeem helpers target this adapter so pUSD is
+	// bridged to the underlying Conditional Tokens collateral.
 	ContractAddressCTFCollateralAdapter = "0xAdA100Db00Ca00073811820692005400218FcE1f"
 
 	// ContractAddressNegRiskCTFCollateralAdapter is the collateral adapter for
 	// negative-risk CTF flows.
 	//
-	// Included for integrations that need low-level negative-risk collateral
-	// adapter access. Normal neg-risk redemption helpers use NegRiskAdapter.
+	// Neg-risk split, merge, redeem, and conversion helpers target this adapter so
+	// legacy USDC.e collateral is wrapped into pUSD before being returned.
 	ContractAddressNegRiskCTFCollateralAdapter = "0xadA2005600Dec949baf300f4C6120000bDB6eAab"
 )
 
@@ -132,8 +132,8 @@ type ContractConfig struct {
 	// market order signing and settlement.
 	NegRiskExchange common.Address
 
-	// NegRiskAdapter is the adapter used for negative-risk conversion and
-	// redemption flows.
+	// NegRiskAdapter is the legacy adapter used internally by the V2 negative-risk
+	// collateral adapter.
 	NegRiskAdapter common.Address
 
 	// ConditionalTokens is the Gnosis Conditional Tokens Framework contract used
@@ -160,8 +160,8 @@ type ContractConfig struct {
 	// CTFCollateralAdapter is the collateral adapter for standard CTF flows.
 	CTFCollateralAdapter common.Address
 
-	// NegRiskCTFCollateralAdapter is the collateral adapter for negative-risk CTF
-	// flows.
+	// NegRiskCTFCollateralAdapter is the V2 collateral adapter for negative-risk
+	// CTF split, merge, redeem, and conversion flows.
 	NegRiskCTFCollateralAdapter common.Address
 
 	// GnosisSafeFactory is the factory used for legacy SAFE wallet deployments.

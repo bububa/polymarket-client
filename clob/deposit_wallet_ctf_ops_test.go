@@ -106,6 +106,25 @@ func TestRedeemNegRiskWithDepositWalletSubmitsNegRiskRedeemTx(t *testing.T) {
 	assertDepositWalletCallSelector(t, *mock.submitted, ctfABI.Methods["redeemPositions"].ID)
 }
 
+func TestConvertPositionsWithDepositWalletSubmitsNegRiskConversionTx(t *testing.T) {
+	client, signer, mock := newDepositWalletCTFOpsTestClient(t)
+
+	var out relayer.SubmitTransactionResponse
+	err := client.ConvertPositionsWithDepositWallet(
+		context.Background(),
+		validConvertPositionsRequest(),
+		validDepositWalletCTFArgs(),
+		&out,
+	)
+	if err != nil {
+		t.Fatalf("ConvertPositionsWithDepositWallet: %v", err)
+	}
+
+	assertDepositWalletCTFOpSubmitted(t, out, mock)
+	assertDepositWalletBatchSubmitRequest(t, *mock.submitted, signer.Address().Hex(), "7", ctfSafetyNegRiskCTFCollateralAdapter.Hex())
+	assertDepositWalletCallSelector(t, *mock.submitted, negRiskABI.Methods["convertPositions"].ID)
+}
+
 func TestDepositWalletCTFOpsPropagateBuildErrors(t *testing.T) {
 	client, _, _ := newDepositWalletCTFOpsTestClient(t)
 

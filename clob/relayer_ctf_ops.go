@@ -96,6 +96,28 @@ func (c *Client) RedeemNegRiskRelayer(
 	return c.SubmitCTFRelayerTransaction(ctx, &tx, &submitReq, out)
 }
 
+// ConvertPositionsRelayer builds a V2 neg-risk collateral adapter
+// convertPositions transaction, signs a relayer request, and submits it through
+// the configured relayer.
+func (c *Client) ConvertPositionsRelayer(
+	ctx context.Context,
+	req *ConvertPositionsRequest,
+	relayerReq *CTFRelayerArgs,
+	out *relayer.SubmitTransactionResponse,
+) error {
+	var tx CTFTransaction
+	if err := c.BuildConvertPositionsTx(req, &tx); err != nil {
+		return err
+	}
+
+	var submitReq RelayerCTFRequest
+	if err := c.BuildCTFRelayerRequest(ctx, &tx, relayerReq, &submitReq); err != nil {
+		return err
+	}
+
+	return c.SubmitCTFRelayerTransaction(ctx, &tx, &submitReq, out)
+}
+
 // BuildCTFRelayerRequest builds and signs a PROXY relayer request for built CTF calldata.
 func (c *Client) BuildCTFRelayerRequest(
 	ctx context.Context,

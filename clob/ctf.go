@@ -157,6 +157,38 @@ func (c *Client) BuildRedeemNegRiskTx(req *RedeemNegRiskRequest, out *CTFTransac
 	return nil
 }
 
+// BuildConvertPositionsTx writes the destination and calldata for a V2 neg-risk
+// collateral adapter convertPositions call into out. The V2 adapter delegates
+// to the legacy NegRiskAdapter and wraps collateral output back into pUSD.
+func (c *Client) BuildConvertPositionsTx(req *ConvertPositionsRequest, out *CTFTransaction) error {
+	if req == nil {
+		return errors.New("polymarket: nil convert positions request")
+	}
+	if err := validateCTFTransactionOutput(out); err != nil {
+		return err
+	}
+	if err := validateHashRequired("market id", req.MarketID); err != nil {
+		return err
+	}
+	if err := validateBigIntRequired("index set", req.IndexSet); err != nil {
+		return err
+	}
+	if err := validateBigIntRequired("amount", req.Amount); err != nil {
+		return err
+	}
+
+	data, err := negRiskABI.Pack("convertPositions", req.MarketID, req.IndexSet, req.Amount)
+	if err != nil {
+		return fmt.Errorf("ctf: pack neg-risk convertPositions: %w", err)
+	}
+	to, err := c.contractAddress(func(cc ContractConfig) common.Address { return cc.NegRiskCTFCollateralAdapter })
+	if err != nil {
+		return err
+	}
+	*out = CTFTransaction{To: to, Data: data}
+	return nil
+}
+
 // SplitPosition submits a splitPosition transaction and writes its receipt into out.
 func (c *Client) SplitPosition(ctx context.Context, req *SplitPositionRequest, out *TxReceipt) error {
 	var tx CTFTransaction
@@ -188,6 +220,16 @@ func (c *Client) RedeemPositions(ctx context.Context, req *RedeemPositionsReques
 func (c *Client) RedeemNegRisk(ctx context.Context, req *RedeemNegRiskRequest, out *TxReceipt) error {
 	var tx CTFTransaction
 	if err := c.BuildRedeemNegRiskTx(req, &tx); err != nil {
+		return err
+	}
+	return c.sendCTFTxAndWait(ctx, &tx, out)
+}
+
+// ConvertPositions submits a V2 neg-risk collateral adapter convertPositions
+// transaction and writes its receipt into out.
+func (c *Client) ConvertPositions(ctx context.Context, req *ConvertPositionsRequest, out *TxReceipt) error {
+	var tx CTFTransaction
+	if err := c.BuildConvertPositionsTx(req, &tx); err != nil {
 		return err
 	}
 	return c.sendCTFTxAndWait(ctx, &tx, out)

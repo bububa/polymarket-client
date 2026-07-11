@@ -65,3 +65,19 @@ func (c *Client) RedeemNegRiskWithDepositWallet(
 	}
 	return c.SubmitCTFDepositWalletTransaction(ctx, &tx, args, out)
 }
+
+// ConvertPositionsWithDepositWallet builds, signs, and submits a V2 neg-risk
+// collateral adapter convertPositions call through a deposit-wallet WALLET
+// transaction.
+func (c *Client) ConvertPositionsWithDepositWallet(
+	ctx context.Context,
+	req *ConvertPositionsRequest,
+	args *DepositWalletCTFArgs,
+	out *relayer.SubmitTransactionResponse,
+) error {
+	var tx CTFTransaction
+	if err := c.BuildConvertPositionsTx(req, &tx); err != nil {
+		return err
+	}
+	return c.SubmitCTFDepositWalletTransaction(ctx, &tx, args, out)
+}

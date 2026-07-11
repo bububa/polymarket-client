@@ -610,14 +610,14 @@ resp, err := b.CreateAndPostMarketOrder(ctx, mktArgs, opts, clob.FOK, nil)
 
 ### CTF On-Chain Helpers
 
-The CTF helpers build and execute `splitPosition`, `mergePositions`, `redeemPositions`, and neg-risk redemption transactions.
+The CTF helpers build and execute `splitPosition`, `mergePositions`, `redeemPositions`, neg-risk redemption, and neg-risk `convertPositions` transactions.
 
 | Path | Methods | Description |
 | ---- | ------- | ----------- |
-| Build only | `BuildSplitPositionTx`, `BuildMergePositionsTx`, `BuildRedeemPositionsTx`, `BuildRedeemNegRiskTx` | Build `CTFTransaction{To, Data}` without submitting |
-| Direct RPC | `SplitPosition`, `MergePositions`, `RedeemPositions`, `RedeemNegRisk` | Sign and submit through a configured RPC URL |
-| SAFE / PROXY relayer | `BuildCTFRelayerRequest`, `SubmitCTFRelayerTransaction`, `SplitPositionRelayer`, `MergePositionsRelayer`, `RedeemPositionsRelayer`, `RedeemNegRiskRelayer` | Sign and submit existing CTF calldata through legacy relayer flows |
-| Deposit wallet | `CTFDepositWalletTransactionRequest`, `SubmitCTFDepositWalletTransaction`, `SplitPositionWithDepositWallet`, `MergePositionsWithDepositWallet`, `RedeemPositionsWithDepositWallet`, `RedeemNegRiskWithDepositWallet` | Wrap CTF calldata in a deposit-wallet `WALLET` request |
+| Build only | `BuildSplitPositionTx`, `BuildMergePositionsTx`, `BuildRedeemPositionsTx`, `BuildRedeemNegRiskTx`, `BuildConvertPositionsTx` | Build `CTFTransaction{To, Data}` without submitting |
+| Direct RPC | `SplitPosition`, `MergePositions`, `RedeemPositions`, `RedeemNegRisk`, `ConvertPositions` | Sign and submit through a configured RPC URL |
+| SAFE / PROXY relayer | `BuildCTFRelayerRequest`, `SubmitCTFRelayerTransaction`, `SplitPositionRelayer`, `MergePositionsRelayer`, `RedeemPositionsRelayer`, `RedeemNegRiskRelayer`, `ConvertPositionsRelayer` | Sign and submit existing CTF calldata through legacy relayer flows |
+| Deposit wallet | `CTFDepositWalletTransactionRequest`, `SubmitCTFDepositWalletTransaction`, `SplitPositionWithDepositWallet`, `MergePositionsWithDepositWallet`, `RedeemPositionsWithDepositWallet`, `RedeemNegRiskWithDepositWallet`, `ConvertPositionsWithDepositWallet` | Wrap CTF calldata in a deposit-wallet `WALLET` request |
 
 Prefer the operation-level deposit wallet helpers for CTF actions. They are safer than manually assembling a `CTFTransaction` because they validate the operation request, build the calldata, wrap it in a deposit-wallet `WALLET` request, sign it, and submit it in one call.
 
@@ -692,6 +692,22 @@ err = client.RedeemNegRiskWithDepositWallet(ctx, &clob.RedeemNegRiskRequest{
     DepositWallet: "0xDepositWalletAddress",
     Deadline:      "1760000000",
     Metadata:      "redeem-neg-risk",
+}, &resp)
+```
+
+Convert selected NO positions into the complementary YES positions and pUSD.
+The helper targets `NegRiskCTFCollateralAdapter`, which delegates the conversion
+to the legacy Neg Risk Adapter and wraps collateral output back into pUSD:
+
+```go
+err = client.ConvertPositionsWithDepositWallet(ctx, &clob.ConvertPositionsRequest{
+    MarketID: marketID,
+    IndexSet: big.NewInt(1), // bit zero selects the first question's NO position
+    Amount:   big.NewInt(1_000_000),
+}, &clob.DepositWalletCTFArgs{
+    DepositWallet: "0xDepositWalletAddress",
+    Deadline:      "1760000000",
+    Metadata:      "convert-neg-risk-positions",
 }, &resp)
 ```
 
