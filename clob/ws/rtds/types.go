@@ -493,7 +493,7 @@ func containsFold(values []string, target string) bool {
 
 func subscriptionWireFilters(s Subscription) (any, bool, error) {
 	if s.Filters == nil {
-		if s.Topic == TopicCryptoPricesChainlink {
+		if s.Topic == TopicCryptoPrices || s.Topic == TopicCryptoPricesChainlink {
 			return "", true, nil
 		}
 		return nil, false, nil

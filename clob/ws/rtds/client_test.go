@@ -34,6 +34,16 @@ func TestSupportedSymbolsReturnCopies(t *testing.T) {
 		!IsSupportedEquitySymbol("aapl") {
 		t.Fatal("supported symbol lookup should be case-insensitive")
 	}
+	for _, symbol := range []string{"dogeusdt", "bnbusdt"} {
+		if IsSupportedBinanceSymbol(symbol) {
+			t.Fatalf("undocumented Binance RTDS symbol %q reported as supported", symbol)
+		}
+	}
+	for _, symbol := range []string{"doge/usd", "bnb/usd"} {
+		if IsSupportedChainlinkSymbol(symbol) {
+			t.Fatalf("undocumented Chainlink RTDS symbol %q reported as supported", symbol)
+		}
+	}
 }
 
 func TestSubscriptionWireShapeMatchesOfficialDocs(t *testing.T) {
@@ -42,6 +52,14 @@ func TestSubscriptionWireShapeMatchesOfficialDocs(t *testing.T) {
 		sub  Subscription
 		want string
 	}{
+		{
+			name: "binance all symbols",
+			sub: Subscription{
+				Topic: TopicCryptoPrices,
+				Type:  TypeUpdate,
+			},
+			want: `{"topic":"crypto_prices","type":"update","filters":""}`,
+		},
 		{
 			name: "binance comma separated filters",
 			sub: Subscription{

@@ -88,8 +88,8 @@ func New(config Config) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 	clt := &Client{
 		url:                url,
-		creds:              atomic.NewPointer[Credentials](config.Credentials),
-		gammaAuth:          atomic.NewPointer[GammaAuth](config.GammaAuth),
+		creds:              atomic.NewPointer(config.Credentials),
+		gammaAuth:          atomic.NewPointer(config.GammaAuth),
 		ctx:                ctx,
 		cancel:             cancel,
 		msgs:               make(chan *Message, 1024),
@@ -271,7 +271,7 @@ func (c *Client) Unsubscribe(ctx context.Context, sub Subscription) error {
 
 // SubscribeCryptoPrices subscribes to Binance crypto price updates.
 func (c *Client) SubscribeCryptoPrices(ctx context.Context, symbols []string) error {
-	var filters any
+	var filters any = ""
 	if len(symbols) > 0 {
 		filters = strings.ToLower(strings.Join(symbols, ","))
 	}
