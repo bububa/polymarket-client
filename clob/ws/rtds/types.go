@@ -63,6 +63,10 @@ const (
 	BinanceSymbolSOLUSDT = "solusdt"
 	// BinanceSymbolXRPUSDT is the Binance XRP/USDT symbol.
 	BinanceSymbolXRPUSDT = "xrpusdt"
+	// BinanceSymbolDOGEUSDT is the Binance Dogecoin/USDT symbol emitted by RTDS.
+	BinanceSymbolDOGEUSDT = "dogeusdt"
+	// BinanceSymbolBNBUSDT is the Binance BNB/USDT symbol emitted by RTDS.
+	BinanceSymbolBNBUSDT = "bnbusdt"
 )
 
 const (
@@ -74,6 +78,10 @@ const (
 	ChainlinkSymbolSOLUSD = "sol/usd"
 	// ChainlinkSymbolXRPUSD is the Chainlink XRP/USD symbol.
 	ChainlinkSymbolXRPUSD = "xrp/usd"
+	// ChainlinkSymbolDOGEUSD is the Chainlink Dogecoin/USD symbol emitted by RTDS.
+	ChainlinkSymbolDOGEUSD = "doge/usd"
+	// ChainlinkSymbolBNBUSD is the Chainlink BNB/USD symbol emitted by RTDS.
+	ChainlinkSymbolBNBUSD = "bnb/usd"
 )
 
 const (
@@ -153,12 +161,16 @@ var (
 		BinanceSymbolETHUSDT,
 		BinanceSymbolSOLUSDT,
 		BinanceSymbolXRPUSDT,
+		BinanceSymbolDOGEUSDT,
+		BinanceSymbolBNBUSDT,
 	}
 	supportedChainlinkSymbols = []string{
 		ChainlinkSymbolBTCUSD,
 		ChainlinkSymbolETHUSD,
 		ChainlinkSymbolSOLUSD,
 		ChainlinkSymbolXRPUSD,
+		ChainlinkSymbolDOGEUSD,
+		ChainlinkSymbolBNBUSD,
 	}
 	supportedEquityStockSymbols = []string{
 		EquitySymbolAAPL,
@@ -200,12 +212,12 @@ var (
 	}
 )
 
-// SupportedBinanceSymbols returns the officially documented Binance RTDS symbols.
+// SupportedBinanceSymbols returns Binance symbols accepted from the RTDS stream.
 func SupportedBinanceSymbols() []string {
 	return cloneStrings(supportedBinanceSymbols)
 }
 
-// SupportedChainlinkSymbols returns the officially documented Chainlink RTDS symbols.
+// SupportedChainlinkSymbols returns Chainlink symbols accepted from the RTDS stream.
 func SupportedChainlinkSymbols() []string {
 	return cloneStrings(supportedChainlinkSymbols)
 }

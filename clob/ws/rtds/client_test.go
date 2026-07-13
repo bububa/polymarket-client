@@ -17,7 +17,7 @@ import (
 
 func TestSupportedSymbolsReturnCopies(t *testing.T) {
 	binance := SupportedBinanceSymbols()
-	if len(binance) != 4 || binance[0] != BinanceSymbolBTCUSDT {
+	if len(binance) != 6 || binance[0] != BinanceSymbolBTCUSDT {
 		t.Fatalf("unexpected Binance symbols: %#v", binance)
 	}
 	binance[0] = "mutated"
@@ -35,13 +35,13 @@ func TestSupportedSymbolsReturnCopies(t *testing.T) {
 		t.Fatal("supported symbol lookup should be case-insensitive")
 	}
 	for _, symbol := range []string{"dogeusdt", "bnbusdt"} {
-		if IsSupportedBinanceSymbol(symbol) {
-			t.Fatalf("undocumented Binance RTDS symbol %q reported as supported", symbol)
+		if !IsSupportedBinanceSymbol(symbol) {
+			t.Fatalf("observed Binance RTDS symbol %q reported as unsupported", symbol)
 		}
 	}
 	for _, symbol := range []string{"doge/usd", "bnb/usd"} {
-		if IsSupportedChainlinkSymbol(symbol) {
-			t.Fatalf("undocumented Chainlink RTDS symbol %q reported as supported", symbol)
+		if !IsSupportedChainlinkSymbol(symbol) {
+			t.Fatalf("observed Chainlink RTDS symbol %q reported as unsupported", symbol)
 		}
 	}
 }
