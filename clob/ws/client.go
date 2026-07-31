@@ -51,13 +51,16 @@ type Client struct {
 	orderBookInitialDump bool
 	lastDataAt           *atomic.Int64
 	reconnecting         *atomic.Bool
+	reconnectRequested   *atomic.Bool
+	disconnectedNotified *atomic.Bool
 
 	onConnected    Callback
 	onReconnected  Callback
 	onDisconnected Callback
 
-	marketMu   sync.Mutex
-	marketSubs marketSubscriptionState
+	lifecycleMu sync.Mutex
+	marketMu    sync.Mutex
+	marketSubs  marketSubscriptionState
 
 	userSubsMu sync.RWMutex
 	userSubs   []subscription
@@ -214,12 +217,14 @@ func New(opts ...Option) *Client {
 		heartbeatInterval:    DefaultHeartbeatInterval,
 		orderBookInitialDump: true,
 
-		url:          atomic.NewString(""),
-		conn:         atomic.NewPointer[websocket.Conn](nil),
-		lastDataAt:   atomic.NewInt64(0),
-		connected:    atomic.NewBool(false),
-		reconnecting: atomic.NewBool(false),
-		closed:       atomic.NewBool(false),
+		url:                  atomic.NewString(""),
+		conn:                 atomic.NewPointer[websocket.Conn](nil),
+		lastDataAt:           atomic.NewInt64(0),
+		connected:            atomic.NewBool(false),
+		reconnecting:         atomic.NewBool(false),
+		reconnectRequested:   atomic.NewBool(false),
+		disconnectedNotified: atomic.NewBool(false),
+		closed:               atomic.NewBool(false),
 
 		marketSubs: newMarketSubscriptionState(),
 	}
@@ -264,14 +269,33 @@ func (c *Client) connect(ctx context.Context, url string) error {
 
 	conn, _, err := websocket.Dial(ctx, url, c.dialOpts)
 	if err != nil {
-		return fmt.Errorf("polymarket: websocket dial: %w", err)
+		return newConnectionError("dial", err)
+	}
+	c.lifecycleMu.Lock()
+	if c.closed.Load() || c.ctx.Err() != nil {
+		c.lifecycleMu.Unlock()
+		_ = conn.CloseNow()
+		return errors.New("polymarket: websocket client is closed")
 	}
 
-	if oldConn := c.conn.Swap(conn); oldConn != nil {
+	oldConn := c.conn.Swap(conn)
+	c.disconnectedNotified.Store(false)
+
+	reconnected := !c.connected.CompareAndSwap(false, true)
+	go c.readLoop(c.ctx, conn)
+	if c.heartbeatInterval > 0 {
+		go c.heartbeat(c.ctx, conn)
+	}
+	if c.staleTimeout > 0 {
+		c.markDataActive()
+		go c.staleWatchdog(c.ctx, conn)
+	}
+	c.lifecycleMu.Unlock()
+
+	if oldConn != nil {
 		_ = oldConn.CloseNow()
 	}
-
-	if !c.connected.CompareAndSwap(false, true) {
+	if reconnected {
 		if c.onReconnected != nil {
 			go c.onReconnected()
 		}
@@ -281,14 +305,6 @@ func (c *Client) connect(ctx context.Context, url string) error {
 		}
 	}
 
-	go c.readLoop(c.ctx, conn)
-	if c.heartbeatInterval > 0 {
-		go c.heartbeat(c.ctx, conn)
-	}
-	if c.staleTimeout > 0 {
-		c.markDataActive()
-		go c.staleWatchdog(c.ctx, conn)
-	}
 	c.replaySubscriptions(ctx)
 	return nil
 }
@@ -298,13 +314,13 @@ func (c *Client) Close() error {
 	if !c.closed.CompareAndSwap(false, true) {
 		return nil
 	}
+	c.lifecycleMu.Lock()
 	c.cancel()
-	conn := c.conn.Load()
+	conn := c.conn.Swap(nil)
+	c.notifyDisconnectedLocked()
+	c.lifecycleMu.Unlock()
 	if conn != nil {
 		_ = conn.CloseNow()
-	}
-	if c.connected.Load() && c.onDisconnected != nil {
-		go c.onDisconnected()
 	}
 	return nil
 }
@@ -623,11 +639,7 @@ func (c *Client) readLoop(ctx context.Context, conn *websocket.Conn) {
 	for {
 		_, data, err := conn.Read(ctx)
 		if err != nil {
-			if c.ctx.Err() != nil || websocket.CloseStatus(err) != -1 {
-				return
-			}
-			c.sendErr(fmt.Errorf("polymarket: websocket read: %w", err))
-			c.scheduleReconnect(conn)
+			c.handleConnectionFailure(conn, "read", err)
 			return
 		}
 		if len(bytes.TrimSpace(data)) > 0 {
@@ -640,11 +652,7 @@ func (c *Client) readLoop(ctx context.Context, conn *websocket.Conn) {
 			err := conn.Write(writeCtx, websocket.MessageText, []byte("pong"))
 			cancel()
 			if err != nil {
-				if c.ctx.Err() != nil || websocket.CloseStatus(err) != -1 {
-					return
-				}
-				c.sendErr(fmt.Errorf("polymarket: websocket pong: %w", err))
-				c.scheduleReconnect(conn)
+				c.handleConnectionFailure(conn, "pong", err)
 				return
 			}
 			continue
@@ -687,9 +695,11 @@ func (c *Client) staleWatchdog(ctx context.Context, conn *websocket.Conn) {
 				continue
 			}
 			if age := time.Since(time.Unix(0, last)); age > c.staleTimeout {
-				c.sendErr(fmt.Errorf("polymarket: websocket stale: no messages for %s", c.staleTimeout))
-				_ = conn.CloseNow()
-				c.scheduleReconnect(conn)
+				c.handleConnectionFailure(
+					conn,
+					"stale",
+					fmt.Errorf("no messages for %s", c.staleTimeout),
+				)
 				return
 			}
 		}
@@ -732,58 +742,11 @@ func (c *Client) heartbeat(ctx context.Context, conn *websocket.Conn) {
 			err := conn.Write(writeCtx, websocket.MessageText, []byte("PING"))
 			cancel()
 			if err != nil {
-				if c.ctx.Err() != nil || websocket.CloseStatus(err) != -1 {
-					return
-				}
-				c.sendErr(fmt.Errorf("polymarket: websocket ping: %w", err))
-				c.scheduleReconnect(conn)
+				c.handleConnectionFailure(conn, "ping", err)
 				return
 			}
 		}
 	}
-}
-
-func (c *Client) scheduleReconnect(conn *websocket.Conn) {
-	if c.closed.Load() || !c.autoReconnect {
-		if !c.autoReconnect && c.onDisconnected != nil {
-			go c.onDisconnected()
-		}
-		return
-	}
-	if !c.reconnecting.CompareAndSwap(false, true) {
-		return
-	}
-	if !c.conn.CompareAndSwap(conn, nil) {
-		_ = conn.CloseNow()
-		c.reconnecting.CompareAndSwap(true, false)
-		return
-	}
-	go func() {
-		defer func() {
-			c.reconnecting.CompareAndSwap(true, false)
-		}()
-		backoff := time.Second
-		for {
-			if c.closed.Load() {
-				return
-			}
-			select {
-			case <-c.ctx.Done():
-				return
-			case <-time.After(backoff):
-			}
-			dialCtx, cancel := context.WithTimeout(c.ctx, 15*time.Second)
-			err := c.connect(dialCtx, c.url.Load())
-			cancel()
-			if err == nil {
-				return
-			}
-			c.sendErr(err)
-			if backoff < time.Minute {
-				backoff *= 2
-			}
-		}
-	}()
 }
 
 func (c *Client) removeMatchingUserSubscription(target subscription) {

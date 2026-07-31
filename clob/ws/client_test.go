@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -16,6 +18,276 @@ import (
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 )
+
+func TestClientPublishesPeerCloseAsTypedConnectionState(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{})
+		if err != nil {
+			t.Errorf("accept: %v", err)
+			return
+		}
+		var subscription MarketSubscription
+		if err := wsjson.Read(r.Context(), conn, &subscription); err != nil {
+			t.Errorf("read subscription: %v", err)
+			return
+		}
+		if err := conn.Close(websocket.StatusNormalClosure, "server shutdown"); err != nil {
+			t.Errorf("close: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	disconnected := make(chan struct{}, 1)
+	client := New(
+		WithHost("ws"+strings.TrimPrefix(server.URL, "http")),
+		WithHeartbeatInterval(0),
+		WithAutoReconnect(false),
+		WithOnDisconnected(func() {
+			disconnected <- struct{}{}
+		}),
+	)
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	if err := client.ConnectMarket(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	if err := client.SubscribeOrderBook(ctx, []string{"asset-1"}); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case err := <-client.Errors():
+		var connectionErr *ConnectionError
+		if !errors.As(err, &connectionErr) {
+			t.Fatalf("error = %T %v, want *ConnectionError", err, err)
+		}
+		if connectionErr.Status != websocket.StatusNormalClosure {
+			t.Fatalf("close status = %d, want %d", connectionErr.Status, websocket.StatusNormalClosure)
+		}
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for peer close")
+	}
+	select {
+	case <-disconnected:
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for disconnect callback")
+	}
+	if client.IsConnected() {
+		t.Fatal("client retained a closed peer connection")
+	}
+}
+
+func TestClientConnectionFailureHasSingleOwner(t *testing.T) {
+	releaseServer := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{})
+		if err != nil {
+			t.Errorf("accept: %v", err)
+			return
+		}
+		<-releaseServer
+		_ = conn.Close(websocket.StatusNormalClosure, "")
+	}))
+	defer server.Close()
+	defer close(releaseServer)
+
+	disconnected := make(chan struct{}, 2)
+	client := New(
+		WithHost("ws"+strings.TrimPrefix(server.URL, "http")),
+		WithHeartbeatInterval(0),
+		WithAutoReconnect(false),
+		WithOnDisconnected(func() {
+			disconnected <- struct{}{}
+		}),
+	)
+	if err := client.ConnectMarket(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	conn := client.conn.Load()
+	if conn == nil {
+		t.Fatal("active connection is nil")
+	}
+
+	var failures sync.WaitGroup
+	for range 2 {
+		failures.Go(func() {
+			client.handleConnectionFailure(conn, "test", errors.New("transport failed"))
+		})
+	}
+	failures.Wait()
+
+	select {
+	case err := <-client.Errors():
+		if !IsConnectionError(err) {
+			t.Fatalf("error = %T %v, want connection error", err, err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for connection error")
+	}
+	select {
+	case err := <-client.Errors():
+		t.Fatalf("duplicate connection error: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	select {
+	case <-disconnected:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for disconnect callback")
+	}
+	select {
+	case <-disconnected:
+		t.Fatal("duplicate disconnect callback")
+	case <-time.After(50 * time.Millisecond):
+	}
+	if client.IsConnected() {
+		t.Fatal("client retained the failed connection")
+	}
+	_ = client.Close()
+}
+
+func TestClientReconnectsAfterPeerClose(t *testing.T) {
+	var attempts atomic.Int32
+	releaseServer := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{})
+		if err != nil {
+			t.Errorf("accept: %v", err)
+			return
+		}
+		if attempts.Add(1) == 1 {
+			_ = conn.Close(websocket.StatusNormalClosure, "rotate connection")
+			return
+		}
+		<-releaseServer
+		_ = conn.Close(websocket.StatusNormalClosure, "")
+	}))
+	defer server.Close()
+	defer close(releaseServer)
+
+	reconnected := make(chan struct{}, 1)
+	client := New(
+		WithHost("ws"+strings.TrimPrefix(server.URL, "http")),
+		WithHeartbeatInterval(0),
+		WithOnReconnected(func() {
+			reconnected <- struct{}{}
+		}),
+	)
+	if err := client.ConnectMarket(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	select {
+	case err := <-client.Errors():
+		if !IsConnectionError(err) {
+			t.Fatalf("error = %T %v, want connection error", err, err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for peer-close error")
+	}
+	select {
+	case <-reconnected:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for reconnect")
+	}
+	if attempts.Load() < 2 {
+		t.Fatalf("connection attempts = %d, want at least 2", attempts.Load())
+	}
+	if !client.IsConnected() {
+		t.Fatal("client is not connected after reconnect")
+	}
+}
+
+func TestClientCloseNotifiesWhileReconnectIsPending(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{})
+		if err != nil {
+			t.Errorf("accept: %v", err)
+			return
+		}
+		_ = conn.Close(websocket.StatusNormalClosure, "server restart")
+	}))
+	defer server.Close()
+
+	disconnected := make(chan struct{}, 1)
+	client := New(
+		WithHost("ws"+strings.TrimPrefix(server.URL, "http")),
+		WithHeartbeatInterval(0),
+		WithOnDisconnected(func() {
+			disconnected <- struct{}{}
+		}),
+	)
+	if err := client.ConnectMarket(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-client.Errors():
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for peer-close error")
+	}
+	if err := client.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-disconnected:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for terminal disconnect callback")
+	}
+}
+
+func TestClientManualReconnectUsesNewDisconnectGeneration(t *testing.T) {
+	releaseServer := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{})
+		if err != nil {
+			t.Errorf("accept: %v", err)
+			return
+		}
+		<-releaseServer
+		_ = conn.Close(websocket.StatusNormalClosure, "")
+	}))
+	defer server.Close()
+	defer close(releaseServer)
+
+	disconnected := make(chan struct{}, 2)
+	client := New(
+		WithHost("ws"+strings.TrimPrefix(server.URL, "http")),
+		WithHeartbeatInterval(0),
+		WithAutoReconnect(false),
+		WithOnDisconnected(func() {
+			disconnected <- struct{}{}
+		}),
+	)
+	for generation := 1; generation <= 2; generation++ {
+		if err := client.ConnectMarket(t.Context()); err != nil {
+			t.Fatalf("connect generation %d: %v", generation, err)
+		}
+		conn := client.conn.Load()
+		if conn == nil {
+			t.Fatalf("generation %d connection is nil", generation)
+		}
+		client.handleConnectionFailure(conn, "test", errors.New("transport failed"))
+		select {
+		case <-disconnected:
+		case <-time.After(time.Second):
+			t.Fatalf("generation %d did not publish disconnect callback", generation)
+		}
+		select {
+		case <-client.Errors():
+		case <-time.After(time.Second):
+			t.Fatalf("generation %d did not publish connection error", generation)
+		}
+	}
+	if err := client.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-disconnected:
+		t.Fatal("close duplicated the terminal callback")
+	case <-time.After(50 * time.Millisecond):
+	}
+}
 
 func TestClientSubscribesAndDecodesEvents(t *testing.T) {
 	gotSub := make(chan MarketSubscription, 1)
@@ -1583,6 +1855,7 @@ func TestDecodeEventArrayError(t *testing.T) {
 
 func TestClientRespondsToServerPingWithPong(t *testing.T) {
 	gotPong := make(chan struct{}, 1)
+	releaseServer := make(chan struct{})
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{})
@@ -1612,8 +1885,10 @@ func TestClientRespondsToServerPingWithPong(t *testing.T) {
 		}
 
 		gotPong <- struct{}{}
+		<-releaseServer
 	}))
 	defer server.Close()
+	defer close(releaseServer)
 
 	url := "ws" + strings.TrimPrefix(server.URL, "http")
 	client := New(
