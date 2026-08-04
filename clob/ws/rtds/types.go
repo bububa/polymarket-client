@@ -382,7 +382,7 @@ func (m *Message) AsChainlinkPrice(out *ChainlinkPrice) error {
 // AsChainlinkTWAPPrice decodes Payload as a ChainlinkTWAPPrice.
 func (m *Message) AsChainlinkTWAPPrice(out *ChainlinkTWAPPrice) error {
 	if m.Topic != TopicCryptoPricesChainlinkTWAP30 && m.Topic != TopicCryptoPricesChainlinkTWAP60 {
-		return fmt.Errorf("polymarket: RTDS topic is %q, not a chainlink TWAP topic", m.Topic)
+		return fmt.Errorf("polymarket: RTDS topic is %q, not %s or %s", m.Topic, TopicCryptoPricesChainlinkTWAP30, TopicCryptoPricesChainlinkTWAP60)
 	}
 	return json.Unmarshal(m.Payload, out)
 }

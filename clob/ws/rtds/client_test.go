@@ -341,6 +341,62 @@ func TestChainlinkTWAPTopicResolvesWindow(t *testing.T) {
 	}
 }
 
+func TestClientSubscribesChainlinkTWAP(t *testing.T) {
+	gotSub := make(chan SubscriptionRequest, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{})
+		if err != nil {
+			t.Errorf("accept: %v", err)
+			return
+		}
+		defer conn.Close(websocket.StatusNormalClosure, "")
+
+		var sub SubscriptionRequest
+		if err := wsjson.Read(context.Background(), conn, &sub); err != nil {
+			t.Errorf("read subscription: %v", err)
+			return
+		}
+		gotSub <- sub
+
+		<-context.Background().Done()
+	}))
+	defer server.Close()
+
+	client := NewClient(wsURL(server)).WithAutoReconnect(false).WithHeartbeatInterval(0)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := client.Connect(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	if err := client.SubscribeChainlinkTWAPPrices(ctx, ChainlinkTWAPWindow30, []string{ChainlinkSymbolBTCUSD, ChainlinkSymbolETHUSD}); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case sub := <-gotSub:
+		if sub.Action != ActionSubscribe {
+			t.Fatalf("action = %q, want %q", sub.Action, ActionSubscribe)
+		}
+		if len(sub.Subscriptions) != 2 {
+			t.Fatalf("len(subscriptions) = %d, want 2: %#v", len(sub.Subscriptions), sub.Subscriptions)
+		}
+		for i, want := range []string{ChainlinkSymbolBTCUSD, ChainlinkSymbolETHUSD} {
+			got := sub.Subscriptions[i]
+			if got.Topic != TopicCryptoPricesChainlinkTWAP30 || got.Type != TypeUpdate {
+				t.Fatalf("subscription[%d] = %#v, want topic %s type %s", i, got, TopicCryptoPricesChainlinkTWAP30, TypeUpdate)
+			}
+			filters, ok := got.Filters.(string)
+			if !ok || filters != `{"symbol":"`+want+`"}` {
+				t.Fatalf("subscription[%d] filters = %#v, want symbol %q", i, got.Filters, want)
+			}
+		}
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for subscription")
+	}
+}
+
 func TestConnectContextDoesNotStopReadLoop(t *testing.T) {
 	writeMessage := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

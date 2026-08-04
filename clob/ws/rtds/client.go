@@ -290,18 +290,23 @@ func (c *Client) SubscribeChainlinkPrices(ctx context.Context, symbol string) er
 }
 
 // SubscribeChainlinkTWAPPrices subscribes to Chainlink crypto price TWAP updates for a lookback window.
-func (c *Client) SubscribeChainlinkTWAPPrices(ctx context.Context, window int, symbol string) error {
+func (c *Client) SubscribeChainlinkTWAPPrices(ctx context.Context, window int, symbols []string) error {
 	topic, err := chainlinkTWAPTopic(window)
 	if err != nil {
 		return err
 	}
-	var filters any
-	if symbol != "" {
-		filters = map[string]string{"symbol": strings.ToLower(symbol)}
-	} else {
-		filters = ""
+	if len(symbols) == 0 {
+		return c.Subscribe(ctx, Subscription{Topic: topic, Type: TypeUpdate})
 	}
-	return c.Subscribe(ctx, Subscription{Topic: topic, Type: TypeUpdate, Filters: filters})
+	subs := make([]Subscription, 0, len(symbols))
+	for _, symbol := range symbols {
+		subs = append(subs, Subscription{
+			Topic:   topic,
+			Type:    TypeUpdate,
+			Filters: map[string]string{"symbol": strings.ToLower(symbol)},
+		})
+	}
+	return c.subscribeMany(ctx, subs)
 }
 
 // chainlinkTWAPTopic resolves the RTDS topic for a Chainlink TWAP lookback window.
