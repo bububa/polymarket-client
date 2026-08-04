@@ -88,6 +88,41 @@ func TestSubscriptionWireShapeMatchesOfficialDocs(t *testing.T) {
 			want: `{"topic":"crypto_prices_chainlink","type":"*","filters":""}`,
 		},
 		{
+			name: "chainlink twap 30 json symbol filters",
+			sub: Subscription{
+				Topic:   TopicCryptoPricesChainlinkTWAP30,
+				Type:    TypeUpdate,
+				Filters: map[string]string{"symbol": ChainlinkSymbolBTCUSD},
+			},
+			want: `{"topic":"crypto_prices_twap_thirty","type":"update","filters":"{\"symbol\":\"btc/usd\"}"}`,
+		},
+		{
+			name: "chainlink twap 60 json symbol filters",
+			sub: Subscription{
+				Topic:   TopicCryptoPricesChainlinkTWAP60,
+				Type:    TypeUpdate,
+				Filters: map[string]string{"symbol": ChainlinkSymbolBTCUSD},
+			},
+			want: `{"topic":"crypto_prices_twap_sixty","type":"update","filters":"{\"symbol\":\"btc/usd\"}"}`,
+		},
+		{
+			name: "chainlink twap all symbols",
+			sub: Subscription{
+				Topic:   TopicCryptoPricesChainlinkTWAP30,
+				Type:    TypeUpdate,
+				Filters: "",
+			},
+			want: `{"topic":"crypto_prices_twap_thirty","type":"update","filters":""}`,
+		},
+		{
+			name: "chainlink twap omitted filters",
+			sub: Subscription{
+				Topic: TopicCryptoPricesChainlinkTWAP30,
+				Type:  TypeUpdate,
+			},
+			want: `{"topic":"crypto_prices_twap_thirty","type":"update"}`,
+		},
+		{
 			name: "equity json string filters",
 			sub: Subscription{
 				Topic:   TopicEquityPrices,
@@ -225,6 +260,84 @@ func TestEquityPayloadDecoding(t *testing.T) {
 	}
 	if snapshot.Symbol != "aapl" || len(snapshot.Data) != 2 || float64(snapshot.Data[1].Value) != 198.41 {
 		t.Fatalf("unexpected equity snapshot: %#v", snapshot)
+	}
+}
+
+func TestChainlinkTWAPPayloadDecoding(t *testing.T) {
+	tests := []struct {
+		name  string
+		topic string
+		value string
+	}{
+		{
+			name:  "30 second window numeric value",
+			topic: TopicCryptoPricesChainlinkTWAP30,
+			value: `{"symbol":"btc/usd","value":65000.5,"full_accuracy_value":"65000500000000000000000","timestamp":1785178800000,"window_s":30}`,
+		},
+		{
+			name:  "60 second window string value",
+			topic: TopicCryptoPricesChainlinkTWAP60,
+			value: `{"symbol":"btc/usd","value":"64800.25","full_accuracy_value":"64800250000000000000000","timestamp":1785182400000,"window_s":60}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			msg := Message{
+				Topic:   tt.topic,
+				Type:    TypeUpdate,
+				Payload: []byte(tt.value),
+			}
+			var price ChainlinkTWAPPrice
+			if err := msg.AsChainlinkTWAPPrice(&price); err != nil {
+				t.Fatal(err)
+			}
+			if price.Symbol != ChainlinkSymbolBTCUSD {
+				t.Fatalf("symbol = %q, want %q", price.Symbol, ChainlinkSymbolBTCUSD)
+			}
+			if price.FullAccuracyValue == "" {
+				t.Fatal("full_accuracy_value unexpectedly empty")
+			}
+			if price.Window == 0 {
+				t.Fatal("window unexpectedly zero")
+			}
+			if float64(price.Value) <= 0 {
+				t.Fatalf("value = %v, want > 0", price.Value)
+			}
+		})
+	}
+
+	msg := Message{
+		Topic:   TopicCryptoPricesChainlink,
+		Type:    TypeUpdate,
+		Payload: []byte(`{"symbol":"btc/usd","value":65000.5,"full_accuracy_value":"65000500000000000000000","timestamp":1785178800000,"window_s":30}`),
+	}
+	var price ChainlinkTWAPPrice
+	if err := msg.AsChainlinkTWAPPrice(&price); err == nil {
+		t.Fatal("expected error decoding non-TWAP topic as ChainlinkTWAPPrice")
+	}
+}
+
+func TestChainlinkTWAPTopicResolvesWindow(t *testing.T) {
+	tests := []struct {
+		window int
+		want   string
+	}{
+		{window: ChainlinkTWAPWindow30, want: TopicCryptoPricesChainlinkTWAP30},
+		{window: ChainlinkTWAPWindow60, want: TopicCryptoPricesChainlinkTWAP60},
+	}
+	for _, tt := range tests {
+		got, err := chainlinkTWAPTopic(tt.window)
+		if err != nil {
+			t.Fatalf("chainlinkTWAPTopic(%d): %v", tt.window, err)
+		}
+		if got != tt.want {
+			t.Fatalf("chainlinkTWAPTopic(%d) = %q, want %q", tt.window, got, tt.want)
+		}
+	}
+
+	if _, err := chainlinkTWAPTopic(15); err == nil {
+		t.Fatal("expected error for unsupported window")
 	}
 }
 

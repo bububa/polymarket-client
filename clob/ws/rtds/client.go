@@ -289,6 +289,33 @@ func (c *Client) SubscribeChainlinkPrices(ctx context.Context, symbol string) er
 	return c.Subscribe(ctx, Subscription{Topic: TopicCryptoPricesChainlink, Type: TypeAll, Filters: filters})
 }
 
+// SubscribeChainlinkTWAPPrices subscribes to Chainlink crypto price TWAP updates for a lookback window.
+func (c *Client) SubscribeChainlinkTWAPPrices(ctx context.Context, window int, symbol string) error {
+	topic, err := chainlinkTWAPTopic(window)
+	if err != nil {
+		return err
+	}
+	var filters any
+	if symbol != "" {
+		filters = map[string]string{"symbol": strings.ToLower(symbol)}
+	} else {
+		filters = ""
+	}
+	return c.Subscribe(ctx, Subscription{Topic: topic, Type: TypeUpdate, Filters: filters})
+}
+
+// chainlinkTWAPTopic resolves the RTDS topic for a Chainlink TWAP lookback window.
+func chainlinkTWAPTopic(window int) (string, error) {
+	switch window {
+	case ChainlinkTWAPWindow30:
+		return TopicCryptoPricesChainlinkTWAP30, nil
+	case ChainlinkTWAPWindow60:
+		return TopicCryptoPricesChainlinkTWAP60, nil
+	default:
+		return "", fmt.Errorf("polymarket: unsupported chainlink TWAP window %d", window)
+	}
+}
+
 // SubscribeEquityPrices subscribes to equity price updates for symbols.
 func (c *Client) SubscribeEquityPrices(ctx context.Context, symbols []string) error {
 	if len(symbols) == 0 {

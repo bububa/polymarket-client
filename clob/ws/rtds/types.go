@@ -25,10 +25,21 @@ const (
 	TopicCryptoPrices = "crypto_prices"
 	// TopicCryptoPricesChainlink is the Chainlink crypto price RTDS topic.
 	TopicCryptoPricesChainlink = "crypto_prices_chainlink"
+	// TopicCryptoPricesChainlinkTWAP30 is the Chainlink 30-second TWAP price RTDS topic.
+	TopicCryptoPricesChainlinkTWAP30 = "crypto_prices_twap_thirty"
+	// TopicCryptoPricesChainlinkTWAP60 is the Chainlink 60-second TWAP price RTDS topic.
+	TopicCryptoPricesChainlinkTWAP60 = "crypto_prices_twap_sixty"
 	// TopicEquityPrices is the equity, ETF, forex, metals, and commodities RTDS topic.
 	TopicEquityPrices = "equity_prices"
 	// TopicComments is the comments RTDS topic.
 	TopicComments = "comments"
+)
+
+const (
+	// ChainlinkTWAPWindow30 is the 30-second Chainlink TWAP lookback window.
+	ChainlinkTWAPWindow30 = 30
+	// ChainlinkTWAPWindow60 is the 60-second Chainlink TWAP lookback window.
+	ChainlinkTWAPWindow60 = 60
 )
 
 const (
@@ -368,6 +379,14 @@ func (m *Message) AsChainlinkPrice(out *ChainlinkPrice) error {
 	return json.Unmarshal(m.Payload, out)
 }
 
+// AsChainlinkTWAPPrice decodes Payload as a ChainlinkTWAPPrice.
+func (m *Message) AsChainlinkTWAPPrice(out *ChainlinkTWAPPrice) error {
+	if m.Topic != TopicCryptoPricesChainlinkTWAP30 && m.Topic != TopicCryptoPricesChainlinkTWAP60 {
+		return fmt.Errorf("polymarket: RTDS topic is %q, not a chainlink TWAP topic", m.Topic)
+	}
+	return json.Unmarshal(m.Payload, out)
+}
+
 // AsEquityPrice decodes Payload as an EquityPrice live update.
 func (m *Message) AsEquityPrice(out *EquityPrice) error {
 	if m.Topic != TopicEquityPrices {
@@ -416,6 +435,20 @@ type ChainlinkPrice struct {
 	Timestamp int64 `json:"timestamp"`
 	// Value is the price value.
 	Value shared.Float64 `json:"value"`
+}
+
+// ChainlinkTWAPPrice is a Chainlink time-weighted average price (TWAP) update.
+type ChainlinkTWAPPrice struct {
+	// Symbol is the feed symbol.
+	Symbol string `json:"symbol"`
+	// Timestamp is the source timestamp.
+	Timestamp int64 `json:"timestamp"`
+	// Value is the time-weighted average price value.
+	Value shared.Float64 `json:"value"`
+	// FullAccuracyValue is the exact signed E18 fixed-point value.
+	FullAccuracyValue string `json:"full_accuracy_value"`
+	// Window is the TWAP lookback window in seconds.
+	Window int `json:"window_s"`
 }
 
 // EquityPrice is an equity_prices live update payload.
@@ -518,7 +551,7 @@ func subscriptionWireFilters(s Subscription) (any, bool, error) {
 		case string:
 			return filters, true, nil
 		}
-	case TopicCryptoPricesChainlink, TopicEquityPrices:
+	case TopicCryptoPricesChainlink, TopicCryptoPricesChainlinkTWAP30, TopicCryptoPricesChainlinkTWAP60, TopicEquityPrices:
 		switch filters := s.Filters.(type) {
 		case string:
 			return filters, true, nil
